@@ -77,13 +77,19 @@ def _get_freeze_mask(shape, constraints: List[Any], dtype="float32") -> np.ndarr
     return mask
 
 
-def _build_g(input_shape, one_hot_columns: List[Tuple[int, int]], freeze_mask: np.ndarray,
+def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot_columns: List[Tuple[int, int]], freeze_mask: np.ndarray,
              l1: float, l2: float, tau: float) -> Tuple[tf.Tensor, tf.Tensor, tf.keras.Model]:
     x = Input(shape=input_shape)
-    y = Dense(100, activation='relu')(x)
-    y = Dropout(0.2)(y)
-    y = Dense(100, activation='relu')(y)
-    y = Dropout(0.2)(y)
+    if layers:
+        y = x
+        for layer in layers:
+            y = layer(y)
+    else:
+        y = Dense(100, activation='relu')(x)
+        y = Dropout(0.2)(y)
+        y = Dense(100, activation='relu')(y)
+        y = Dropout(0.2)(y)
+
     y = Dense(np.prod(input_shape))(y)
 
     # freeze columns
@@ -149,10 +155,12 @@ def _get_one_hot_columns(constraints: List[Any]) -> List[Tuple[int, int]]:
 
 class Fimap(CounterfactualMethod):
 
-    def __init__(self, tau: float = 0.1, l1: float = 0.01, l2: float = 0.1, constraints: Optional[List[Any]] = None):
+    def __init__(self, tau: float = 0.1, l1: float = 0.01, l2: float = 0.1, constraints: Optional[List[Any]] = None,
+                 s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None):
         self._constraints = constraints if constraints is not None else []
-        self._s: tf.keras.Model = None
-        self._g: tf.keras.Model = None
+        self._s = s
+        self._g = None
+        self._g_layers = g_layers
         self._sg: tf.keras.Model = None
         self._input_shape = None
         self._one_hot_columns = _get_one_hot_columns(self._constraints)
@@ -164,9 +172,12 @@ class Fimap(CounterfactualMethod):
     def fit(self, x: np.ndarray, y: np.ndarray, **kwargs) -> None:
         input_shape = x.shape[1:]
         self._freeze_mask = _get_freeze_mask(input_shape, self._constraints)
-        s = _build_s(input_shape=input_shape)
-        s.fit(x, y, **kwargs)
+        s = self._s
+        if s is None:
+            s = _build_s(input_shape=input_shape)
+            s.fit(x, y, **kwargs)
         x_g, y_g, g = _build_g(input_shape=input_shape,
+                               layers=self._g_layers,
                                one_hot_columns=self._one_hot_columns,
                                freeze_mask=self._freeze_mask,
                                l1=self._l1, l2=self._l2,
@@ -179,5 +190,4 @@ class Fimap(CounterfactualMethod):
 
     def generate(self, x: Union[pd.Series, np.ndarray]) -> Union[pd.DataFrame, np.ndarray]:
         perturbed = self._g.predict(x.reshape(1, -1))
-        # TODO: satisfy constraints
         return perturbed
