@@ -7,10 +7,11 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense, Dropout, Input, Add, Concatenate, \
     Multiply
-
+from sklearn.preprocessing import LabelBinarizer
 from counterfactuals.base import CounterfactualMethod
 
-from counterfactuals.constraints import Freeze, OneHot
+from counterfactuals.constraints import Freeze, OneHot, Nominal
+from counterfactuals.preprocessing import DataFrameMapper
 
 
 def _freeze_layers(model: tf.keras.Model) -> None:
@@ -68,16 +69,18 @@ def _get_span(inputs: tf.Tensor, start: int, end: int) -> tf.Tensor:
     return Lambda(lambda x: x[:, start:end])(inputs)
 
 
-def _get_freeze_mask(shape, constraints: List[Any], dtype="float32") -> np.ndarray:
+def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dtype="float32") -> np.ndarray:
     mask = np.ones(shape, dtype=dtype)
     for constraint in constraints:
         if isinstance(constraint, Freeze):
             for column in constraint.columns:
-                mask[column] = 0.
+                start, end = mapper.transformed_column_span(column)
+                mask[start:end] = 0.
     return mask
 
 
-def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot_columns: List[Tuple[int, int]], freeze_mask: np.ndarray,
+def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot_columns: List[Tuple[int, int]],
+             freeze_mask: np.ndarray,
              l1: float, l2: float, tau: float) -> Tuple[tf.Tensor, tf.Tensor, tf.keras.Model]:
     x = Input(shape=input_shape)
     if layers:
@@ -145,12 +148,16 @@ def _build_sg_combined(x_g: tf.Tensor, y_g: tf.Tensor, g: tf.keras.Model, s: tf.
     return g, sg
 
 
-def _get_one_hot_columns(constraints: List[Any]) -> List[Tuple[int, int]]:
+def _get_nominal_columns(constraints: List[Any]) -> List[str]:
     columns = []
     for constraint in constraints:
-        if isinstance(constraint, OneHot):
-            columns.append((constraint.start_column, constraint.end_column))
+        if isinstance(constraint, Nominal):
+            columns.extend(constraint.columns)
     return columns
+
+
+def _get_continuous_columns(columns: List[str], nominal_columns: List[str]) -> List[str]:
+    return [column for column in columns if column not in nominal_columns]
 
 
 class Fimap(CounterfactualMethod):
@@ -159,35 +166,41 @@ class Fimap(CounterfactualMethod):
                  s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None):
         self._constraints = constraints if constraints is not None else []
         self._s = s
-        self._g = None
+        self._g: tf.keras.Model = None
         self._g_layers = g_layers
         self._sg: tf.keras.Model = None
         self._input_shape = None
-        self._one_hot_columns = _get_one_hot_columns(self._constraints)
+        self._nominal_columns = _get_nominal_columns(self._constraints)
+        self._continuous_columns: List[str] = None
         self._freeze_mask: np.ndarray = None
         self._tau = tau
         self._l1 = l1
         self._l2 = l2
+        self._mapper = DataFrameMapper(nominal_columns=self._nominal_columns)
+        self._y_label_binarizer = LabelBinarizer()
 
-    def fit(self, x: np.ndarray, y: np.ndarray, **kwargs) -> None:
+    def fit(self, x: pd.DataFrame, y: pd.Series, epochs:int = 5, **kwargs) -> None:
+        x = self._mapper.fit_transform(x)
+        y = self._y_label_binarizer.fit_transform(y)
         input_shape = x.shape[1:]
-        self._freeze_mask = _get_freeze_mask(input_shape, self._constraints)
+        self._freeze_mask = _get_freeze_mask(input_shape, self._constraints, self._mapper)
         s = self._s
         if s is None:
             s = _build_s(input_shape=input_shape)
-            s.fit(x, y, **kwargs)
+            s.fit(x, y, epochs=epochs)
         x_g, y_g, g = _build_g(input_shape=input_shape,
                                layers=self._g_layers,
-                               one_hot_columns=self._one_hot_columns,
+                               one_hot_columns=self._mapper.one_hot_spans,
                                freeze_mask=self._freeze_mask,
                                l1=self._l1, l2=self._l2,
                                tau=self._tau)
         g, sg_combined = _build_sg_combined(x_g=x_g, y_g=y_g, g=g, s=s)
-        sg_combined.fit(x, 1 - y, **kwargs)
+        sg_combined.fit(x, 1 - y, epochs=epochs)
         self._s = s
         self._g = g
         self._sg = sg_combined
 
-    def generate(self, x: Union[pd.Series, np.ndarray]) -> Union[pd.DataFrame, np.ndarray]:
-        perturbed = self._g.predict(x.reshape(1, -1))
-        return perturbed
+    def generate(self, x: pd.Series) -> pd.DataFrame:
+        x = self._mapper.transform(x.to_frame().T)
+        perturbed = self._g.predict(x)
+        return self._mapper.inverse_transform(perturbed)
