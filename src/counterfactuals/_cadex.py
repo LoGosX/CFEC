@@ -1,11 +1,13 @@
 from src.constraints import ValueChangeDirection, Freeze, OneHot
 from src.counterfactuals.base import CounterfactualMethod
+from data.GermanData import GermanData
 
 import pandas as pd
 import numpy as np
 
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
+from tensorflow import keras
 
 from typing import Union, List, Any, Optional
 
@@ -13,8 +15,7 @@ from typing import Union, List, Any, Optional
 class Cadex(CounterfactualMethod):
     '''
     Creates a counterfactual explanation based on a pre-trained model using CADEX method
-    The model has to be a Keras classifier model, where in the final classification layer, each class label must
-    have a separate unit.
+    The model has to be a Keras classifier model
     '''
 
     def __init__(self, pretrained_model, constraints: Optional[List[Any]] = None) -> None:
@@ -101,3 +102,15 @@ class Cadex(CounterfactualMethod):
                 val = 1 if constraint.direction == "+" else -1
                 for column in constraint.columns:
                     self.C[column] = val
+
+
+
+if __name__ == "__main__":
+    german_data = GermanData('data/input_german.csv', 'data/labels_german.csv')
+    test_X = german_data.input.iloc[9]
+    print(test_X)
+    model = keras.models.load_model('models/model_german')
+    cadex = Cadex(model)
+    cf = cadex.generate(test_X)
+    print(cf)
+    
