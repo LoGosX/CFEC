@@ -1,5 +1,5 @@
 import operator
-from typing import Union, Tuple, List, Any, Optional
+from typing import Tuple, List, Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -10,7 +10,7 @@ from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense
 from sklearn.preprocessing import LabelBinarizer
 from counterfactuals.base import CounterfactualMethod
 
-from counterfactuals.constraints import Freeze, OneHot, Nominal
+from counterfactuals.constraints import Freeze, ValueNominal
 from counterfactuals.preprocessing import DataFrameMapper
 
 
@@ -160,7 +160,7 @@ def _build_sg_combined(x_g: tf.Tensor, y_g: tf.Tensor, g: tf.keras.Model, s: tf.
 def _get_nominal_columns(constraints: List[Any]) -> List[str]:
     columns = []
     for constraint in constraints:
-        if isinstance(constraint, Nominal):
+        if isinstance(constraint, ValueNominal):
             columns.extend(constraint.columns)
     return columns
 
@@ -178,10 +178,9 @@ class Fimap(CounterfactualMethod):
         self._g: tf.keras.Model = None
         self._g_layers = g_layers
         self._sg: tf.keras.Model = None
-        self._input_shape = None
+        self._input_shape: Tuple[int]
         self._nominal_columns = _get_nominal_columns(self._constraints)
-        self._continuous_columns: List[str] = None
-        self._freeze_mask: np.ndarray = None
+        self._continuous_columns: List[str]
         self._tau = tau
         self._l1 = l1
         self._l2 = l2
@@ -192,7 +191,7 @@ class Fimap(CounterfactualMethod):
         x = self._mapper.fit_transform(x)
         y = self._y_label_binarizer.fit_transform(y)
         input_shape = x.shape[1:]
-        self._freeze_mask = _get_freeze_mask(input_shape, self._constraints, self._mapper)
+        freeze_mask = _get_freeze_mask(input_shape, self._constraints, self._mapper)
         s = self._s
         if s is None:
             s = _build_s(input_shape=input_shape)
@@ -200,7 +199,7 @@ class Fimap(CounterfactualMethod):
         x_g, y_g, g = _build_g(input_shape=input_shape,
                                layers=self._g_layers,
                                one_hot_columns=self._mapper.one_hot_spans,
-                               freeze_mask=self._freeze_mask,
+                               freeze_mask=freeze_mask,
                                l1=self._l1, l2=self._l2,
                                tau=self._tau)
         g, sg_combined = _build_sg_combined(x_g=x_g, y_g=y_g, g=g, s=s)

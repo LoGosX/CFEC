@@ -1,9 +1,7 @@
-import pytest
-
 from counterfactuals.preprocessing import DataFrameMapper
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 
 def _transform_to_numpy(df):
@@ -31,7 +29,7 @@ def test_dataframemapper():
     assert np.array_equal(df_numpy, mapped)
 
 
-def test_dataframemapper_fittransform():
+def test_dataframemapper_fit_transform():
     df2 = _default_dataframe()
     mapper = DataFrameMapper(nominal_columns=['b'])
 
@@ -39,7 +37,7 @@ def test_dataframemapper_fittransform():
 
     df_numpy = _transform_to_numpy(df2)
 
-    assert np.array_equal(df_numpy, mapped)
+    np.testing.assert_array_equal(df_numpy, mapped)
 
 
 def test_all_continuous():
@@ -50,6 +48,19 @@ def test_all_continuous():
 
     mapper_df_transformed = mapper.fit_transform(df)
 
-    assert np.array_equal(df_transformed, mapper_df_transformed), "Transformed arrays are not equal"
+    np.testing.assert_array_equal(df_transformed, mapper_df_transformed)
 
-    assert df == mapper.inverse_transform(mapper_df_transformed), "Inverse-transformed arrays are not equal"
+    pd.testing.assert_frame_equal(df, mapper.inverse_transform(mapper_df_transformed))
+
+
+def test_all_nominal():
+    df = pd.DataFrame(data=np.random.randint(0, 100, (3, 3)))
+    df_one_hot = OneHotEncoder(sparse=False).fit_transform(df)
+
+    mapper = DataFrameMapper(nominal_columns=[0, 1, 2])
+
+    mapper_df_transformed = mapper.fit_transform(df)
+
+    np.testing.assert_array_equal(df_one_hot, mapper_df_transformed)
+
+    pd.testing.assert_frame_equal(df, mapper.inverse_transform(mapper_df_transformed))
