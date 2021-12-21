@@ -54,12 +54,15 @@ def _gumbel_distribution(shape):
 
 class _GumbelSoftmax(Layer):
 
-    def __init__(self, tau: float, num_classes: int):
+    def __init__(self, tau: float, num_classes: int, freeze: bool = False):
         super(_GumbelSoftmax, self).__init__()
         self.tau = tau
         self.num_classes = num_classes
+        self.freeze = freeze
 
     def call(self, inputs, **kwargs):
+        if self.freeze:
+            return K.stop_gradient(K.one_hot(K.argmax(inputs), self.num_classes))
         x = inputs + _gumbel_distribution(inputs)
         x = K.softmax(x / self.tau)
         return K.stop_gradient(K.one_hot(K.argmax(x), self.num_classes))
@@ -97,6 +100,7 @@ def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot
 
     # freeze columns
     freeze_mask = freeze_mask.reshape(1, -1)
+
     y = Multiply()([y, freeze_mask])
 
     spans = []
@@ -111,8 +115,13 @@ def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot
             input_span = _get_span(x, last_end, start)
             perturbed = Add()([span, input_span])
             spans.append(perturbed)
-        span = _get_span(y, start, end)
-        span = _GumbelSoftmax(tau, num_classes=end - start)(span)
+
+        freeze = np.any(freeze_mask[0, start:end] == 0)
+        if freeze:
+            span = _get_span(x, start, end)
+        else:
+            span = _get_span(y, start, end)
+        span = _GumbelSoftmax(tau, num_classes=end - start, freeze=freeze)(span)
         span = ActivityRegularization(l2=l2)(span)
         spans.append(span)
         last_end = end
@@ -179,7 +188,7 @@ class Fimap(CounterfactualMethod):
         self._mapper = DataFrameMapper(nominal_columns=self._nominal_columns)
         self._y_label_binarizer = LabelBinarizer()
 
-    def fit(self, x: pd.DataFrame, y: pd.Series, epochs:int = 5, **kwargs) -> None:
+    def fit(self, x: pd.DataFrame, y: pd.Series, epochs: int = 5, **kwargs) -> None:
         x = self._mapper.fit_transform(x)
         y = self._y_label_binarizer.fit_transform(y)
         input_shape = x.shape[1:]

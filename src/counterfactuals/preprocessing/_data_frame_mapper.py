@@ -1,12 +1,15 @@
 from typing import List, Tuple
 
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
 
 
-class DataFrameMapper(BaseEstimator, TransformerMixin):
+def _stack_continuous_nominal(c, n):
+    return np.hstack([c, n])
+
+
+class DataFrameMapper:
     def __init__(self, nominal_columns: List[str]):
         self._nominal_columns = nominal_columns
         self._continuous_columns: List[str] = None
@@ -44,54 +47,18 @@ class DataFrameMapper(BaseEstimator, TransformerMixin):
             if col == column:
                 return span
 
-        # column is continuous
+        # column is continuous and is at the beginning of transformed array
         idx = self._continuous_columns.index(column)
         return idx, idx + 1
 
-    def fit(self, x: pd.DataFrame, y=None, **fit_params):
-        self._fit_transform(x, fit=True)
-        return self
-
-    def transform(self, x: pd.DataFrame, y=None) -> pd.DataFrame:
-        return self._fit_transform(x, fit=False)
-
-    def fit_transform(self, x: pd.DataFrame, y=None, **fit_params):
-        self.fit(x)
-        return self.transform(x)
-
-    def _fit_transform(self, x: pd.DataFrame, fit: bool):
-        self._original_columns = list(x.columns)
-        nominal_columns_original_positions = []
-        for i, column in enumerate(x.columns):
-            if column in self._nominal_columns:
-                nominal_columns_original_positions.append(i)
-
-        ohe = OneHotEncoder(sparse=False) if fit else self._one_hot_encoder
-
-        nominal_columns = x[self._nominal_columns]
-
-        if fit:
-            one_hot_encoded = ohe.fit_transform(nominal_columns)
-        else:
-            one_hot_encoded = ohe.transform(nominal_columns)
-
-        x = x.drop(columns=self._nominal_columns)
-        self._continuous_columns = list(x.columns)
-        sc = StandardScaler() if fit else self._standard_scaler
-        if fit:
-            x_numpy = sc.fit_transform(x)
-        else:
-            x_numpy = sc.transform(x)
-        self._n_continuous_columns = x_numpy.shape[1]
-
-        self._standard_scaler = sc
-        self._one_hot_encoder = ohe
-        self._nominal_columns_original_positions = nominal_columns_original_positions
-
-        if not fit:
-            return np.hstack([x_numpy, one_hot_encoded])
-
     def inverse_transform(self, x: np.ndarray) -> pd.DataFrame:
+
+        if self._one_hot_encoder is None and self._standard_scaler is not None:
+            reconstructed_continuous = self._standard_scaler.inverse_transform(x)
+            return pd.DataFrame(data=reconstructed_continuous, columns=self._original_columns)
+        elif self._standard_scaler is None and self._one_hot_encoder is not None:
+            reconstructed_nominal = self._one_hot_encoder.inverse_transform(x)
+            return pd.DataFrame(data=reconstructed_nominal, columns=self._original_columns)
         n_one_hot = self._n_one_hot_columns
         one_hot_columns = x[:, -n_one_hot:]
         continuous_columns = x[:, :-n_one_hot]
@@ -104,3 +71,59 @@ class DataFrameMapper(BaseEstimator, TransformerMixin):
             reconstructed = np.insert(reconstructed, column, reconstructed_labels[:, i], axis=1)
 
         return pd.DataFrame(data=reconstructed, columns=self._original_columns)
+
+    def fit(self, x: pd.DataFrame, y=None, **fit_params):
+        self._original_columns = list(x.columns)
+        self._fit_nominal(x)
+        self._fit_continuous(x)
+        return self
+
+    def fit_transform(self, x: pd.DataFrame) -> np.ndarray:
+        self.fit(x)
+        return self.transform(x)
+
+    def transform(self, x: pd.DataFrame, y=None) -> np.ndarray:
+        continuous = self._transform_continuous(x)
+        nominal = self._transform_nominal(x)
+        return _stack_continuous_nominal(continuous, nominal)
+
+    def _fit_continuous(self, x: pd.DataFrame):
+        x = x.drop(columns=self._nominal_columns)
+        self._continuous_columns = list(x.columns)
+        self._n_continuous_columns = x.shape[1]
+        if not self._continuous_columns:
+            return
+        sc = StandardScaler()
+        sc.fit(x)
+        self._standard_scaler = sc
+
+    def _transform_continuous(self, x: pd.DataFrame):
+        x = x.drop(columns=self._nominal_columns)
+        if not self._continuous_columns:
+            return np.empty((x.shape[0],), dtype="float32")
+        x_numpy = self._standard_scaler.transform(x)
+        return x_numpy
+
+    def _fit_nominal(self, x: pd.DataFrame):
+        if not self._nominal_columns:
+            return
+        nominal_columns_original_positions = []
+        for i, column in enumerate(x.columns):
+            if column in self._nominal_columns:
+                nominal_columns_original_positions.append(i)
+
+        nominal_columns = x[self._nominal_columns]
+
+        ohe = OneHotEncoder(sparse=False)
+        ohe.fit(nominal_columns)
+        self._one_hot_encoder = ohe
+        self._nominal_columns_original_positions = nominal_columns_original_positions
+
+    def _transform_nominal(self, x: pd.DataFrame):
+        ohe = self._one_hot_encoder
+        if ohe is None:
+            return np.empty((x.shape[0],))
+        nominal_columns = x[self._nominal_columns]
+        one_hot_encoded = ohe.transform(nominal_columns)
+
+        return one_hot_encoded
