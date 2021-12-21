@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
+from numpy.typing import NDArray
 from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense, Dropout, Input, Add, Concatenate, \
     Multiply
 from sklearn.preprocessing import LabelBinarizer
@@ -39,7 +40,8 @@ def _build_s(input_shape) -> tf.keras.Model:
     return s
 
 
-def _freeze_constraints_to_mask(layer_size: int, freeze_constraints: List[Freeze], dtype='float32') -> np.ndarray:
+def _freeze_constraints_to_mask(layer_size: int, freeze_constraints: List[Freeze], dtype='float32') \
+        -> NDArray[np.float32]:
     mask = np.zeros(shape=(layer_size,), dtype=dtype)
     for constraint in freeze_constraints:
         columns = np.asarray(constraint.columns)
@@ -72,7 +74,7 @@ def _get_span(inputs: tf.Tensor, start: int, end: int) -> tf.Tensor:
     return Lambda(lambda x: x[:, start:end])(inputs)
 
 
-def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dtype="float32") -> np.ndarray:
+def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dtype="float32") -> NDArray[np.float32]:
     mask = np.ones(shape, dtype=dtype)
     for constraint in constraints:
         if isinstance(constraint, Freeze):
@@ -83,7 +85,7 @@ def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dty
 
 
 def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot_columns: List[Tuple[int, int]],
-             freeze_mask: np.ndarray,
+             freeze_mask: NDArray[np.float32],
              l1: float, l2: float, tau: float) -> Tuple[tf.Tensor, tf.Tensor, tf.keras.Model]:
     x = Input(shape=input_shape)
     if layers:
@@ -116,7 +118,7 @@ def _build_g(input_shape, layers: Optional[List[tf.keras.layers.Layer]], one_hot
             perturbed = Add()([span, input_span])
             spans.append(perturbed)
 
-        freeze = np.any(freeze_mask[0, start:end] == 0)
+        freeze = bool(np.any(freeze_mask[0, start:end] == 0))
         if freeze:
             span = _get_span(x, start, end)
         else:

@@ -1,11 +1,12 @@
 from typing import List, Tuple, Optional
 
 import numpy as np
+from numpy.typing import NDArray
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
 
 
-def _stack_continuous_nominal(c, n):
+def _stack_continuous_nominal(c: NDArray[np.float32], n: NDArray[np.float32]) -> NDArray[np.float32]:
     if len(c.shape) < 2:
         c = c.reshape(-1, 1)
     if len(n.shape) < 2:
@@ -54,7 +55,7 @@ class DataFrameMapper:
         idx = self._continuous_columns.index(column)
         return idx, idx + 1
 
-    def inverse_transform(self, x: np.ndarray) -> pd.DataFrame:
+    def inverse_transform(self, x: NDArray[np.float32]) -> pd.DataFrame:
 
         sc = self._standard_scaler
         ohe = self._one_hot_encoder
@@ -89,17 +90,20 @@ class DataFrameMapper:
         self._fit_continuous(x)
         return self
 
-    def fit_transform(self, x: pd.DataFrame) -> np.ndarray:
+    def fit_transform(self, x: pd.DataFrame) -> NDArray[np.float32]:
         self.fit(x)
         return self.transform(x)
 
-    def transform(self, x: pd.DataFrame, y=None) -> np.ndarray:
-        continuous = self._transform_continuous(x)
-        nominal = self._transform_nominal(x)
-        if continuous is None:
+    def transform(self, x: pd.DataFrame, y=None) -> NDArray[np.float32]:
+        continuous = self._transform_continuous(x) if self._standard_scaler is not None else None
+        nominal = self._transform_nominal(x) if self._one_hot_encoder is not None else None
+        if continuous is None and nominal is None:
+            raise ValueError("There are no transformers fitted. Did you forgot to call fit()?")
+        if continuous is None and nominal is not None:
             return nominal
-        if nominal is None:
+        if nominal is None and continuous is not None:
             return continuous
+        assert continuous is not None and nominal is not None
         return _stack_continuous_nominal(continuous, nominal)
 
     def _fit_continuous(self, x: pd.DataFrame):
@@ -112,11 +116,11 @@ class DataFrameMapper:
         sc.fit(x)
         self._standard_scaler = sc
 
-    def _transform_continuous(self, x: pd.DataFrame):
+    def _transform_continuous(self, x: pd.DataFrame) -> NDArray[np.float32]:
         x = x.drop(columns=self._nominal_columns)
-        if self._standard_scaler is None:
-            return None
+        assert self._standard_scaler is not None
         x_numpy = self._standard_scaler.transform(x)
+        assert isinstance(x_numpy, np.ndarray)
         return x_numpy
 
     def _fit_nominal(self, x: pd.DataFrame):
@@ -134,10 +138,9 @@ class DataFrameMapper:
         self._one_hot_encoder = ohe
         self._nominal_columns_original_positions = nominal_columns_original_positions
 
-    def _transform_nominal(self, x: pd.DataFrame):
-        if self._one_hot_encoder is None:
-            return None
+    def _transform_nominal(self, x: pd.DataFrame) -> NDArray[np.float32]:
         nominal_columns = x[self._nominal_columns]
-        one_hot_encoded = self._one_hot_encoder.transform(nominal_columns)
-
-        return np.round(one_hot_encoded)
+        assert self._one_hot_encoder is not None
+        one_hot_encoded = np.round(self._one_hot_encoder.transform(nominal_columns))
+        assert isinstance(one_hot_encoded, np.ndarray)
+        return one_hot_encoded
