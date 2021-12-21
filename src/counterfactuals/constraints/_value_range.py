@@ -3,5 +3,7 @@ from typing import List
 
 
 @dataclass
-class Freeze:
+class ValueRange:
     columns: List[str]
+    min_value: float
+    max_value: float

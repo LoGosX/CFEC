@@ -1,6 +1,12 @@
-from typing import List
+from dataclasses import dataclass
+from typing import List, Dict
 
 
-class Nominal:
-    def __init__(self, columns: List[str]):
+@dataclass(init=False)
+class ValueNominal:
+    columns: List[str]
+    values: List[str]
+
+    def __init__(self, columns: List[str], constraints: Dict[str, str]):
         self.columns = columns
+        self.values = list(constraints.values())

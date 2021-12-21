@@ -1,13 +1,16 @@
 from ._freeze import Freeze
-from ._min_max_value import MinMaxValue
-from ._one_hot import OneHot
-from ._value_change_direction import ValueChangeDirection
-from ._nominal import Nominal
+from ._max_difference import ValueMaxDiff
+from ._monotocity import ValueMonotonicity
+from ._nominal import ValueNominal
+from ._value_range import ValueRange
+from ._utils import json_to_class_parse, read_from_excel
 
 __all__ = [
-    "Freeze",
-    "MinMaxValue",
-    "OneHot",
-    "ValueChangeDirection",
-    "Nominal",
+    'Freeze',
+    'ValueMaxDiff',
+    'ValueMonotonicity',
+    'ValueNominal',
+    'ValueRange',
+    'json_to_class_parse',
+    'read_from_excel'
 ]

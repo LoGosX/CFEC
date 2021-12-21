@@ -3,5 +3,6 @@ from typing import List
 
 
 @dataclass
-class Freeze:
+class ValueMaxDiff:
     columns: List[str]
+    max_difference: float

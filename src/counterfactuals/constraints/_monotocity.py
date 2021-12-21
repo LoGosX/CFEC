@@ -3,5 +3,6 @@ from typing import List
 
 
 @dataclass
-class Freeze:
+class ValueMonotonicity:
     columns: List[str]
+    direction: str
