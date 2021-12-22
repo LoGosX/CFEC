@@ -23,5 +23,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install tox tox-gh-actions
-      - name: Test py38 and py39 with tox
+      - name: Test ${{ matrix.python-version[1] }} with tox
         run: tox -e ${{ matrix.python-version[1] }}
