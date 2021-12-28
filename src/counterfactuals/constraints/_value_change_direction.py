@@ -1,7 +1,8 @@
+from dataclasses import dataclass
 from typing import List
 
 
+@dataclass
 class ValueChangeDirection:
-    def __init__(self, columns: List[int], direction: str = '+'):
-        self.columns = columns
-        self.direction = direction
+    columns: List[int]
+    direction: str
