@@ -100,7 +100,7 @@ class Cadex(CounterfactualMethod):
 
     def _transform_input(self, x: pd.Series) -> tf.Variable:
         if self._transform:
-            self._transform(x)
+            x = self._transform(x)
         self._columns = list(x.index)
         self._dtype = x.dtype
         return tf.Variable(x.to_numpy()[np.newaxis, :], dtype=self._dtype)
@@ -120,6 +120,7 @@ class Cadex(CounterfactualMethod):
                 for column in constraint.columns:
                     self._mask[column] = 0
 
+        # TODO what if onehot?
         indices = np.argsort(gradient)[::-1][0]
         count = 0
         for i in indices:

@@ -31,7 +31,7 @@ class GermanData:
         if type(data) is pd.DataFrame:
             return pd.DataFrame(self._scaler.inverse_transform(data), index=data.index, columns=data.columns)
         elif type(data) is pd.Series:
-            return pd.Series(self._scaler.inverse_transform(data), index=data.index)
+            return pd.Series(self._scaler.inverse_transform(pd.DataFrame([data]))[0].transpose(), index=data.index)
         else:
             return self._scaler.inverse_transform(data)
 
@@ -39,6 +39,6 @@ class GermanData:
         if type(data) is pd.DataFrame:
             return pd.DataFrame(self._scaler.transform(data), index=data.index, columns=data.columns)
         elif type(data) is pd.Series:
-            return pd.Series(self._scaler.transform(data), index=data.index)
+            return pd.Series(self._scaler.transform(pd.DataFrame([data]))[0].transpose(), index=data.index, dtype=np.float64)
         else:
             return self._scaler.transform(data)
