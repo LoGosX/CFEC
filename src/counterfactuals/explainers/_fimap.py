@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense, Dropout, Input, Add, Concatenate, \
     Multiply
 from sklearn.preprocessing import LabelBinarizer
-from counterfactuals.base import CounterfactualMethod
+from counterfactuals.base import BaseExplainer
 
 from counterfactuals.constraints import Freeze, ValueNominal
 from counterfactuals.preprocessing import DataFrameMapper
@@ -171,7 +171,7 @@ def _get_continuous_columns(columns: List[str], nominal_columns: List[str]) -> L
     return [column for column in columns if column not in nominal_columns]
 
 
-class Fimap(CounterfactualMethod):
+class Fimap(BaseExplainer):
 
     def __init__(self, tau: float = 0.1, l1: float = 0.01, l2: float = 0.1, constraints: Optional[List[Any]] = None,
                  s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None):

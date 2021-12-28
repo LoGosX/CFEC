@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 import itertools
@@ -8,14 +8,17 @@ import joblib
 import psutil
 import warnings
 import pandas as pd
-from counterfactuals.base import CounterfactualMethod
+from counterfactuals.base import BaseExplainer
 from numpy.typing import NDArray
 
 
-class ECE(CounterfactualMethod):
-    def __init__(self, k: int, bces: List[CounterfactualMethod], dist: int, h: int,
+from ._cadex_parallel import compute_criterion
+
+
+class ECE(BaseExplainer):
+    def __init__(self, k: int, columns: List[str], bces: List[BaseExplainer], dist: int, h: int,
                  lambda_: float, n_jobs=None):
-        self._col_names: List[str]
+        self._col_names = columns
         self.k = k
         self.bces = bces
         self.norm = dist
@@ -60,26 +63,11 @@ class ECE(CounterfactualMethod):
         c_np = np.asarray(C)
         knn_c.fit(c_np, np.ones(shape=c_np.shape[0]))
 
-        def compute_criterion(S: Tuple[NDArray[np.float32]]):
-            bin_sumset = np.full(shape=len(S), fill_value=False, dtype=bool)
-            dist_sum = 0.
-            S_np = np.asarray(S)
-            for c in S:
-                (_, ids) = knn_c.kneighbors(np.expand_dims(c, axis=0))
-                neighbors = np.squeeze(C[ids[:, 1:]])
-                for i in range(neighbors.shape[0]):
-                    bin_sumset |= np.all(neighbors[i] == S_np, axis=1)
-                minuend = np.sum(bin_sumset)
-                dist_sum += np.linalg.norm(x - c, ord=self.norm)
-            subtrahend = self.lambda_ * dist_sum
-            return minuend - subtrahend
-
-        S_ids = joblib.Parallel(n_jobs=self.n_jobs)(joblib.delayed(compute_criterion)(S) for S in k_subsets)
+        S_ids = joblib.Parallel(n_jobs=self.n_jobs)(joblib.delayed(compute_criterion)(knn_c, self.norm, self.lambda_, c_np, x, S) for S in k_subsets)
         selected = norms * k_subsets[np.argmax(np.asarray(S_ids))]
         return selected
 
     def generate(self, x: pd.Series) -> pd.DataFrame:
-        self._col_names = list(x.columns)
         self._aggregated_cfs = self._aggregate_cfs(x)
         k_subset = self._choose_best_k(self._aggregated_cfs, x)
         return pd.DataFrame(k_subset, columns=self._col_names)

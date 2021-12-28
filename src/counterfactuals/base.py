@@ -1,11 +1,11 @@
-"""Base classes for all counterfactual generation models"""
+"""Base classes for all counterfactual generation explainers"""
 
 from abc import ABC, abstractmethod
 
 import pandas as pd
 
 
-class CounterfactualMethod(ABC):
+class BaseExplainer(ABC):
 
     @abstractmethod
     def generate(self, x: pd.Series) -> pd.DataFrame:

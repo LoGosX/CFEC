@@ -1,7 +1,7 @@
 from numpy.typing import NDArray
 
 from counterfactuals.constraints import ValueMonotonicity, Freeze, OneHot
-from counterfactuals.base import CounterfactualMethod
+from counterfactuals.base import BaseExplainer
 
 import pandas as pd
 import numpy as np
@@ -13,7 +13,7 @@ from tensorflow.keras.losses import CategoricalCrossentropy
 from typing import Union, List, Any, Callable, Optional
 
 
-class Cadex(CounterfactualMethod):
+class Cadex(BaseExplainer):
     """
     Creates a counterfactual explanation based on a pre-trained model using CADEX method
     The model has to be a Keras classifier model
@@ -44,10 +44,14 @@ class Cadex(CounterfactualMethod):
         self._columns: List[str]
         self._dtype: str
 
-    def generate(self, x: pd.Series) -> Union[pd.Series, None]:
+    def generate(self, x: pd.Series) -> Union[pd.DataFrame, None]:
         x = self._transform_input(x)
         cf = self._gradient_descent(x)
-        return self._inverse_transform_input(cf)
+        if cf is None:
+            return None
+        x_inv = self._inverse_transform_input(cf)
+        assert x_inv is not None
+        return x_inv.to_frame().T
 
     def _gradient_descent(self, x: tf.Variable) -> tf.Variable:
         y = self._get_predicted_class(x)

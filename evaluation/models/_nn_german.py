@@ -1,4 +1,4 @@
-from evaluation.data.GermanData import GermanData
+from evaluation.data._german_data import GermanData
 from keras.models import Sequential
 from keras.layers import Dense
 
@@ -19,4 +19,4 @@ if __name__ == "__main__":
     model.fit(german_data.X_train, german_data.y_train, batch_size=16, epochs=10)
     scores = model.evaluate(german_data.X_test, german_data.y_test, verbose=0)
     print(scores)
-    model.save('models/model_german')
+    model.save('explainers/model_german')
