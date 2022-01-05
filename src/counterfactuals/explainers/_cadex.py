@@ -22,11 +22,12 @@ class Cadex(BaseExplainer):
     def __init__(self,
                  pretrained_model,
                  n_changed: int = 5,
+                 columns_to_change: Optional[List[Union[int, str]]] = None,
                  max_epochs: int = 1000,
                  optimizer: tf.keras.optimizers.Optimizer = Adam(0.01),
                  loss: tf.keras.losses.Loss = CategoricalCrossentropy(),
-                 transform: Optional[Callable[[pd.Series], pd.Series]] = None,
-                 inverse_transform: Optional[Callable[[pd.Series], pd.Series]] = None,
+                 transform: Optional[Callable[[NDArray], NDArray]] = None,
+                 inverse_transform: Optional[Callable[[NDArray], NDArray]] = None,
                  constraints: Optional[List[Any]] = None) -> None:
 
         self._constraints = constraints if constraints is not None else []
@@ -35,12 +36,13 @@ class Cadex(BaseExplainer):
         self._model = pretrained_model
         self._max_epochs = max_epochs
         self._n_changed = n_changed
+        self._columns_to_change = columns_to_change
 
         self._transform = transform
         self._inverse_transform = inverse_transform
 
-        self._mask: NDArray[np.float32]
-        self._C: NDArray[np.float32]
+        self._mask: NDArray[np.int32]
+        self._C: NDArray[np.int32]
         self._columns: List[str]
         self._dtype: str
 
@@ -51,15 +53,15 @@ class Cadex(BaseExplainer):
             return None
         x_inv = self._inverse_transform_input(cf)
         assert x_inv is not None
-        return x_inv.to_frame().T
+        return pd.DataFrame([x_inv], columns=self._columns)
 
     def _gradient_descent(self, x: tf.Variable) -> tf.Variable:
         y = self._get_predicted_class(x)
-        y_expected = np.array([0, 1]) if y == 0 else np.array([1, 0])
+        y_expected: NDArray[Any] = np.array([0, 1]) if y == 0 else np.array([1, 0])
 
         input_shape = x.shape[1:]
         gradient = self._get_gradient(x, y_expected)
-        self._initialize_mask(input_shape, gradient)
+        self._initialize_mask(input_shape, gradient.numpy()[0]) # TODO standardize
         self._initialize_c(input_shape)
 
         for _ in range(self._max_epochs):
@@ -91,51 +93,94 @@ class Cadex(BaseExplainer):
 
     def _correct_categoricals(self, x) -> tf.Variable:
         corrected_x = x.numpy()[0]
+        if self._inverse_transform is not None:
+            corrected_x = self._inverse_transform(corrected_x)
+
         for constraint in self._constraints:
             if isinstance(constraint, OneHot):
-                feature = corrected_x[constraint.start_column, constraint.end_column]
-                print(feature)
+                feature = corrected_x[constraint.start_column:constraint.end_column + 1]
                 max_feature = np.argmax(feature)
-                print(max_feature)
-                corrected_x[constraint.start_column, constraint.end_column] = 0
+                corrected_x[constraint.start_column:constraint.end_column + 1] = 0
                 corrected_x[constraint.start_column + max_feature] = 1
 
-        return tf.convert_to_tensor([corrected_x])
+        if self._transform is not None:
+            corrected_x = self._transform(corrected_x)
+            self._inverse_transform(corrected_x)
+
+        return tf.convert_to_tensor([corrected_x], dtype=self._dtype)
 
     def _transform_input(self, x: pd.Series) -> tf.Variable:
-        if self._transform:
-            x = self._transform(x)
         self._columns = list(x.index)
         self._dtype = x.dtype
-        return tf.Variable(x.to_numpy()[np.newaxis, :], dtype=self._dtype)
+        x = x.to_numpy(dtype=self._dtype)
+        if self._transform is not None:
+            x = self._transform(x)
+        return tf.Variable(x[np.newaxis, :], dtype=self._dtype)
 
-    def _inverse_transform_input(self, x: Union[tf.Variable, None]) -> Optional[pd.Series]:
-        if x is None:
-            return None
-        x = pd.Series(data=x.numpy()[0], index=self._columns, dtype=self._dtype)
-        if self._inverse_transform:
-            return self._inverse_transform(x)
+    def _inverse_transform_input(self, x: tf.Variable) -> NDArray:
+        x = x.numpy()[0]
+        if self._inverse_transform is not None:
+            x = self._inverse_transform(x)
         return x
 
-    def _initialize_mask(self, shape, gradient, dtype="float32"):
-        self._mask = np.ones(shape, dtype=dtype)
+    def _initialize_mask_with_columns(self, shape):
+        assert self._columns_to_change is not None
+        if all(isinstance(column, int) for column in self._columns_to_change):
+            column_indices = self._columns_to_change
+        else:
+            column_indices = [self._columns.index(column) for column in self._columns_to_change]
+
+        self._mask = np.zeros(shape, dtype=self._dtype)
+        self._mask[column_indices] = 1
+
+    def _apply_mask_constraints(self, shape, gradient):
+        self._mask = np.ones(shape, dtype=self._dtype)
         for constraint in self._constraints:
             if isinstance(constraint, Freeze):
                 for column in constraint.columns:
-                    self._mask[column] = 0
+                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    # if constraint freezes a column which is one-hot encoded, freeze all one-hot columns
+                    for constraint_one_hot in self._constraints:
+                        if isinstance(constraint, OneHot):
+                            if constraint_one_hot.start_column <= column_index <= constraint_one_hot.end_column:
+                                self._mask[constraint_one_hot.start_column: constraint_one_hot.end_column + 1] = 0
+                    self._mask[column_index] = 0
 
-        # TODO what if onehot?
-        indices = np.argsort(gradient)[::-1][0]
+            if isinstance(constraint, ValueMonotonicity):
+                for column in constraint.columns:
+                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    if (constraint.direction == "increasing" and gradient[column_index] < 0) or \
+                            (constraint.direction == "decreasing" and gradient[column_index] > 0):
+                        self._mask[column_index] = 0
+
+    def _choose_n_features(self, gradient):
+        indices = np.argsort(np.absolute(gradient))[::-1]
+        categoricals = []
         count = 0
         for i in indices:
             if count < self._n_changed:
                 if self._mask[i] == 1:
-                    count += 1
+                    for constraint in self._constraints:
+                        if isinstance(constraint, OneHot):
+                            if constraint.start_column <= i <= constraint.end_column and constraint not in categoricals:
+                                categoricals.append(constraint)
+                                count += 1
             else:
                 self._mask[i] = 0
 
-    def _initialize_c(self, shape, dtype="float32"):
-        self.C = np.zeros(shape, dtype=dtype)
+        for constraint in categoricals:
+            self._mask[constraint.start_column: constraint.end_column + 1] = 1
+
+    def _initialize_mask(self, shape, gradient):
+        if self._columns_to_change is not None:
+            self._initialize_mask_with_columns(shape)
+
+        else:
+            self._apply_mask_constraints(shape, gradient)
+            self._choose_n_features(gradient)
+
+    def _initialize_c(self, shape):
+        self.C = np.zeros(shape)
         for constraint in self._constraints:
             if isinstance(constraint, ValueMonotonicity):
                 val = 1 if constraint.direction == "increasing" else -1
