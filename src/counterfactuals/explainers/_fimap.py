@@ -11,7 +11,7 @@ from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense
 from sklearn.preprocessing import LabelBinarizer
 from counterfactuals.base import BaseExplainer
 
-from counterfactuals.constraints import Freeze, ValueNominal
+from counterfactuals.constraints import Freeze, ValueNominal, OneHot
 from counterfactuals.preprocessing import DataFrameMapper
 
 
@@ -167,6 +167,14 @@ def _get_nominal_columns(constraints: List[Any]) -> List[str]:
     return columns
 
 
+def _get_one_hot_columns(constraints: List[Any]) -> List[Tuple[int, int]]:
+    columns = []
+    for constraint in constraints:
+        if isinstance(constraint, OneHot):
+            columns.append((constraint.start_column, constraint.end_column))
+    return columns
+
+
 def _get_continuous_columns(columns: List[str], nominal_columns: List[str]) -> List[str]:
     return [column for column in columns if column not in nominal_columns]
 
@@ -182,11 +190,13 @@ class Fimap(BaseExplainer):
         self._sg: tf.keras.Model = None
         self._input_shape: Tuple[int]
         self._nominal_columns = _get_nominal_columns(self._constraints)
+        self._one_hot_columns = _get_one_hot_columns(self._constraints)
+        self._assert_not_nominal_and_one_hot()
+        self._mapper = DataFrameMapper(nominal_columns=self._nominal_columns, one_hot_columns=self._one_hot_columns)
         self._continuous_columns: List[str]
         self._tau = tau
         self._l1 = l1
         self._l2 = l2
-        self._mapper = DataFrameMapper(nominal_columns=self._nominal_columns)
         self._y_label_binarizer = LabelBinarizer()
 
     def fit(self, x: pd.DataFrame, y: pd.Series, epochs: int = 5, **kwargs) -> None:
@@ -200,7 +210,7 @@ class Fimap(BaseExplainer):
             s.fit(x, y, epochs=epochs)
         x_g, y_g, g = _build_g(input_shape=input_shape,
                                layers=self._g_layers,
-                               one_hot_columns=self._mapper.one_hot_spans,
+                               one_hot_columns=self._one_hot_columns or self._mapper.one_hot_spans,
                                freeze_mask=freeze_mask,
                                l1=self._l1, l2=self._l2,
                                tau=self._tau)
@@ -214,3 +224,8 @@ class Fimap(BaseExplainer):
         x = self._mapper.transform(x.to_frame().T)
         perturbed = self._g.predict(x)
         return self._mapper.inverse_transform(perturbed)
+
+    def _assert_not_nominal_and_one_hot(self):
+        if self._one_hot_columns and self._nominal_columns:
+            raise ValueError(f"You passed {ValueNominal.__name__} and {OneHot.__name__} in constraints, but only one "
+                             f"of them should be used")
