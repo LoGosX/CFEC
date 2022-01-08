@@ -5,6 +5,8 @@ from numpy.typing import NDArray
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
 
+from counterfactuals.constraints import ValueNominal, OneHot
+
 
 def _stack_continuous_nominal(c: NDArray[np.float32], n: NDArray[np.float32]) -> NDArray[np.float32]:
     if len(c.shape) < 2:
@@ -15,14 +17,32 @@ def _stack_continuous_nominal(c: NDArray[np.float32], n: NDArray[np.float32]) ->
 
 
 class DataFrameMapper:
-    def __init__(self, nominal_columns: List[str]):
-        self._nominal_columns = nominal_columns
+    def __init__(self, nominal_columns: Optional[List[str]] = None,
+                 one_hot_columns: Optional[List[Tuple[int, int]]] = None):
+
+        if nominal_columns is None:
+            self._nominal_columns = []
+        else:
+            self._nominal_columns = nominal_columns
+
+        if one_hot_columns is None:
+            self._one_hot_columns = []
+        else:
+            self._one_hot_columns = one_hot_columns
+
         self._continuous_columns: List[str]
         self._nominal_columns_original_positions: List[int]
+
+        self._assert_not_nominal_and_one_hot()
         self._one_hot_encoder: Optional[OneHotEncoder] = None
         self._standard_scaler: Optional[StandardScaler] = None
         self._original_columns: List[str]
         self._n_continuous_columns: int
+
+    def _assert_not_nominal_and_one_hot(self):
+        if self._one_hot_columns and self._nominal_columns:
+            raise ValueError(f"You passed {ValueNominal.__name__} and {OneHot.__name__} in constraints, but only one "
+                             f"of them should be used")
 
     @property
     def nominal_columns(self):
@@ -30,8 +50,12 @@ class DataFrameMapper:
 
     @property
     def one_hot_spans(self) -> List[Tuple[int, int]]:
+        if self._one_hot_columns is not None:
+            return self._one_hot_columns
+
         if self._one_hot_encoder is None:
             return []
+
         spans = []
         one_hot_start = self._n_continuous_columns
         for category in self._one_hot_encoder.categories_:
@@ -124,7 +148,7 @@ class DataFrameMapper:
         return x_numpy
 
     def _fit_nominal(self, x: pd.DataFrame):
-        if not self._nominal_columns:
+        if not self._nominal_columns or self._one_hot_columns:
             return
         nominal_columns_original_positions = []
         for i, column in enumerate(x.columns):
@@ -139,6 +163,9 @@ class DataFrameMapper:
         self._nominal_columns_original_positions = nominal_columns_original_positions
 
     def _transform_nominal(self, x: pd.DataFrame) -> NDArray[np.float32]:
+        if self._one_hot_columns:
+            return np.array(x.iloc[:, start:end + 1] for (start, end) in self._one_hot_columns)
+
         nominal_columns = x[self._nominal_columns]
         assert self._one_hot_encoder is not None
         one_hot_encoded = np.round(self._one_hot_encoder.transform(nominal_columns))
