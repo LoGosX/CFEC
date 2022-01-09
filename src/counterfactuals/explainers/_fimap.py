@@ -9,10 +9,10 @@ from numpy.typing import NDArray
 from tensorflow.keras.layers import Layer, Lambda, ActivityRegularization, Dense, Dropout, Input, Add, Concatenate, \
     Multiply
 from sklearn.preprocessing import LabelBinarizer
-from counterfactuals.base import BaseExplainer
 
-from counterfactuals.constraints import Freeze, ValueNominal
-from counterfactuals.preprocessing import DataFrameMapper
+from ..base import BaseExplainer
+from ..constraints import Freeze, ValueNominal
+from ..preprocessing import DataFrameMapper
 
 
 def _freeze_layers(model: tf.keras.Model) -> None:
