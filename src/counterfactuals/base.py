@@ -7,6 +7,8 @@ import pandas as pd
 
 class BaseExplainer(ABC):
 
+    # TODO: add field with supported constraints per data?
+
     @abstractmethod
     def generate(self, x: pd.Series) -> pd.DataFrame:
         """Generate counterfactuals for a single example x

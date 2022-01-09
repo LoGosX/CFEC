@@ -61,7 +61,7 @@ class Cadex(BaseExplainer):
 
         input_shape = x.shape[1:]
         gradient = self._get_gradient(x, y_expected)
-        self._initialize_mask(input_shape, gradient.numpy()[0]) # TODO standardize
+        self._initialize_mask(input_shape, gradient.numpy()[0])  # TODO standardize
         self._initialize_c(input_shape)
 
         for _ in range(self._max_epochs):
@@ -105,6 +105,7 @@ class Cadex(BaseExplainer):
 
         if self._transform is not None:
             corrected_x = self._transform(corrected_x)
+            assert self._inverse_transform is not None
             self._inverse_transform(corrected_x)
 
         return tf.convert_to_tensor([corrected_x], dtype=self._dtype)
