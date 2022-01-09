@@ -50,11 +50,11 @@ class DataFrameMapper:
 
     @property
     def one_hot_spans(self) -> List[Tuple[int, int]]:
-        if self._one_hot_columns is not None:
-            return self._one_hot_columns
-
         if self._one_hot_encoder is None:
             return []
+
+        if self._one_hot_columns:
+            return self._one_hot_columns
 
         spans = []
         one_hot_start = self._n_continuous_columns

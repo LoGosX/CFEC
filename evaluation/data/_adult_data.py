@@ -2,6 +2,7 @@ from typing import Optional, List
 
 import pandas as pd
 import numpy as np
+from imblearn.under_sampling import RandomUnderSampler
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from counterfactuals.constraints import Freeze, OneHot, ValueMonotonicity, ValueNominal
@@ -11,53 +12,62 @@ class AdultData:
     def __init__(self, dataset_file: str, columns_to_drop: Optional[List[str]] = None, test_frac=0.2, random_state=42):
 
         df = pd.read_csv(dataset_file)
-        self.df = df
 
-        # fill missing values with mode
-        df[df == '?'] = np.nan
+        df.replace('?', np.NaN, inplace=True)
+        df.dropna(inplace=True)
 
-        df.drop(columns=['education.num', 'fnlwgt'], inplace=True)
-
-        for col in ['workclass', 'occupation', 'native.country']:
-            df[col].fillna(df[col].mode()[0], inplace=True)
+        self.target_column = 'income'
 
         categorical_columns = ['workclass', 'education', 'marital.status', 'occupation',
                                'relationship', 'race', 'sex', 'native.country']
         freeze_columns = ['race', 'sex', 'native.country']
 
-        columns_to_drop = columns_to_drop if columns_to_drop is not None else []
+        if columns_to_drop is None:
+            columns_to_drop = ['fnlwgt', 'education.num', 'education', 'relationship', 'native.country', 'capital.gain',
+                               'capital.loss']
+        df.drop(columns_to_drop, axis=1, inplace=True)
         self.categorical_columns = [column for column in categorical_columns if column not in columns_to_drop]
         self.freeze_columns = [column for column in freeze_columns if column not in columns_to_drop]
-        self.target_column = 'income'
+
+        self.raw_X_train, self.raw_X_test, self.raw_y_train, self.raw_y_test = \
+            train_test_split(df.drop(columns=[self.target_column]), df[self.target_column], test_size=test_frac,
+                             random_state=random_state)
 
         self.label_encoders = []
-        for feature in categorical_columns + [self.target_column]:
+        for feature in self.categorical_columns + [self.target_column]:
             lb = LabelEncoder()
-            self.df[feature] = lb.fit_transform(self.df[feature])
+            df[feature] = lb.fit_transform(df[feature])
             self.label_encoders.append(lb)
 
+        self.encoded_raw_X_train, self.encoded_raw_X_test, self.encoded_raw_y_train, self.encoded_raw_y_test = \
+            train_test_split(df.drop(columns=[self.target_column]), df[self.target_column], test_size=test_frac,
+                             random_state=random_state)
+
         self.standard_scalers = []
-        for feature in self.df.columns:
+        for feature in df.columns:
             if feature not in self.categorical_columns and feature != self.target_column:
                 sc = StandardScaler()
-                self.df[feature] = sc.fit_transform(self.df[feature].values.reshape(-1, 1))
+                df[feature] = sc.fit_transform(df[feature].values.reshape(-1, 1))
                 self.standard_scalers.append(sc)
 
-        self.df.drop(columns=columns_to_drop, inplace=True)
-        self.df_inputs = self.df.drop(columns=[self.target_column])
-        self.df_labels = self.df[self.target_column]
+        df_inputs = df.drop(columns=[self.target_column])
+        df_labels = df[self.target_column]
 
         self.constraints = [
             ValueNominal(columns=self.categorical_columns), Freeze(columns=self.freeze_columns)
         ]
+
         self.additional_constraints = []
-        if 'credit' not in columns_to_drop:
-            self.additional_constraints.append(Freeze(['credit']))
         if 'age' not in columns_to_drop:
             self.additional_constraints.append(ValueMonotonicity(['age'], 'increasing'))
 
         self.X_train, self.X_test, self.y_train, self.y_test = \
-            train_test_split(self.df_inputs, self.df_labels, test_size=test_frac, random_state=random_state)
+            train_test_split(df_inputs, df_labels, test_size=test_frac, random_state=random_state)
+
+        self.X_train, self.y_train = RandomUnderSampler().fit_resample(self.X_train, self.y_train)
+        self.raw_X_train, self.raw_y_train = RandomUnderSampler().fit_resample(self.raw_X_train, self.raw_y_train)
+        self.encoded_raw_X_train, self.encoded_raw_y_train = RandomUnderSampler().fit_resample(self.encoded_raw_X_train,
+                                                                                               self.encoded_raw_y_train)
 
     def inverse_transform(self, X: pd.DataFrame, y=None):
         for label_encoder, column in self.categorical_columns:

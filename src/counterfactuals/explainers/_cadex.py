@@ -105,6 +105,7 @@ class Cadex(BaseExplainer):
 
         if self._transform is not None:
             corrected_x = self._transform(corrected_x)
+            assert self._inverse_transform is not None
             self._inverse_transform(corrected_x)
 
         return tf.convert_to_tensor([corrected_x], dtype=self._dtype)

@@ -22,15 +22,16 @@ def _freeze_layers(model: tf.keras.Model) -> None:
         layer.trainable = False
 
 
-def _build_s(input_shape) -> tf.keras.Model:
+def _build_s(input_shape, random_state: int) -> tf.keras.Model:
+    kernel_initializer = tf.keras.initializers.RandomNormal(seed=random_state)
     x = Input(shape=input_shape)
-    y = Dense(200, activation='relu')(x)
+    y = Dense(200, activation='relu', kernel_initializer=kernel_initializer)(x)
     y = Dropout(0.2)(y)
-    y = Dense(200, activation='relu')(y)
+    y = Dense(200, activation='relu', kernel_initializer=kernel_initializer)(y)
     y = Dropout(0.2)(y)
-    y = Dense(200, activation='relu')(y)
+    y = Dense(200, activation='relu', kernel_initializer=kernel_initializer)(y)
     y = Dropout(0.2)(y)
-    y = Dense(1, activation='sigmoid')(y)
+    y = Dense(1, activation='sigmoid', kernel_initializer=kernel_initializer)(y)
 
     s = tf.keras.Model(inputs=x, outputs=y)
 
@@ -65,7 +66,8 @@ class _GumbelSoftmax(Layer):
 
 
 def _get_span(inputs: tf.Tensor, start: int, end: int) -> tf.Tensor:
-    return Lambda(lambda x: x[:, start:end])(inputs)
+    return Lambda(lambda x, _s, _e: x[:, _s:_e],
+                  output_shape=(end - start,), arguments={'_s': start, '_e': end})(inputs)
 
 
 def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dtype="float32") -> NDArray[np.float32]:
@@ -79,7 +81,7 @@ def _get_freeze_mask(shape, constraints: List[Any], mapper: DataFrameMapper, dty
 
 
 def _get_freeze_columns(constraints: List[Any], mapper: DataFrameMapper) -> List[int]:
-    columns = []
+    columns: List[int] = []
     for constraint in constraints:
         if isinstance(constraint, Freeze):
             for column in constraint.columns:
@@ -93,8 +95,8 @@ class MyL1Regularizer(tf.keras.regularizers.Regularizer):
         self.l1 = l1
 
     def __call__(self, x):
-        original = Lambda(lambda _x: _x[:, :, 0])(x)
-        x = Lambda(lambda _x: _x[:, :, 1])(x)
+        original = Lambda(lambda _x: _x[0, :, :])(x)
+        x = Lambda(lambda _x: _x[1, :, :])(x)
         not_equals = K.stop_gradient(
             K.cast(
                 K.not_equal(
@@ -102,61 +104,71 @@ class MyL1Regularizer(tf.keras.regularizers.Regularizer):
                 dtype=tf.float32
             )
         )
-        return self.l1 * tf.reduce_sum(tf.abs(x) * not_equals)
+        return self.l1 * tf.reduce_mean(not_equals)
 
 
 def _build_g(input_shape,
-             layers: List[Any],
+             layers: Optional[List[Any]],
              one_hot_columns: List[Tuple[int, int]],
              increasing_columns: List[int],
              decreasing_columns: List[int],
              freezed_columns: List[int],
-             l1: float, l2: float, tau: float
+             l1: float, l2: float, tau: float, random_state: int
              ):
+    kernel_initializer = tf.keras.initializers.RandomNormal(seed=random_state)
     input_shape = np.prod(input_shape)
     inputs = Input((input_shape,))
-    dense1 = Dense(100, activation='relu')(inputs)
-    dropout1 = Dropout(0.2)(dense1)
-    dense2 = Dense(100, activation='relu')(dropout1)
-    dropout2 = Dropout(0.2)(dense2)
-    dense3 = Dense(input_shape)(dropout2)
+    if layers is not None:
+        y = inputs
+        for x in layers:
+            y = x(y)
+    else:
+        y = Dense(100, activation='relu', kernel_initializer=kernel_initializer)(inputs)
+        y = Dropout(0.2)(y)
+        y = Dense(100, activation='relu', kernel_initializer=kernel_initializer)(y)
+        y = Dropout(0.2)(y)
+        y = Dense(100, activation='relu', kernel_initializer=kernel_initializer)(y)
+        y = Dropout(0.2)(y)
+        y = Dense(100, activation='relu', kernel_initializer=kernel_initializer)(y)
+        y = Dropout(0.2)(y)
+    dense3 = Dense(input_shape, kernel_initializer=kernel_initializer)(y)
 
+    # one hot is after continuous
+    one_hot_start = min(one_hot_columns)[0] if one_hot_columns else input_shape
     continuous_columns = {
-        i: Lambda(lambda x: x[:, i:i+1])(dense3)
-        for i in range(input_shape) if not any(i in range(start, end) for (start, end) in one_hot_columns)
+        j: Lambda(lambda _x, _i: _x[:, _i:_i + 1], output_shape=(1,), arguments={'_i': j})(dense3)
+        for j in range(one_hot_start)
     }
 
     for i, col in continuous_columns.items():
         if i in increasing_columns:
             continuous_columns[i] = ReLU()(col)
         elif i in decreasing_columns:
-            continuous_columns[i] = ReLU(max_value=0., negative_slope=-1.)(col)
+            continuous_columns[i] = ReLU(max_value=0., negative_slope=1.)(col)
         elif i in freezed_columns:
             continuous_columns[i] = ReLU(max_value=0., negative_slope=0.)(col)
 
-    for i, col in continuous_columns.items():
-        continuous_columns[i] = Add()([
+    for j, col in continuous_columns.items():
+        continuous_columns[j] = Add()([
             ActivityRegularization(l2=l2)(col),
-            Lambda(lambda _x: _x[:, i:i + 1])(inputs)
+            Lambda(lambda _x, _i: _x[:, _i:_i + 1], output_shape=(1,), arguments={'_i': j})(inputs)
         ])
 
-    print(continuous_columns)
-
     one_hot_columns_layers = {
-        (start, end): Lambda(lambda x: x[:, start:end]) for (start, end) in one_hot_columns
+        (start, end): Lambda(lambda x, _s, _e: x[:, _s:_e], output_shape=(end - start,),
+                             arguments={'_s': start, '_e': end}) for (start, end) in one_hot_columns
     }
-
-    print(one_hot_columns_layers)
 
     for (start, end), cols in one_hot_columns_layers.items():
         if any([i in range(start, end) for i in freezed_columns]):
             one_hot_columns_layers[(start, end)] = cols(inputs)
         else:
             cols = _GumbelSoftmax(tau=tau, num_classes=end - start)(cols(dense3))
-            one_hot_columns_layers[(start, end)] = cols
-            regularizer_branch = tf.stack([Lambda(lambda _x: _x[:, start:end])(inputs), cols], axis=0)
-            print(tf.shape(regularizer_branch))
-            MyL1Regularizer(l1=l1)(regularizer_branch)
+            stack = tf.stack(
+                [Lambda(lambda _x, _s, _e: _x[:, _s:_e], output_shape=(end - start,),
+                        arguments={'_s': start, '_e': end})(inputs), cols], axis=0)
+            stack = Layer(activity_regularizer=MyL1Regularizer(l1=l1))(stack)
+            one_hot_columns_layers[(start, end)] = Lambda(lambda _x: _x[1, :, :])(stack)
 
     if one_hot_columns_layers and continuous_columns:
         concat1 = Concatenate(axis=-1)(list(continuous_columns.values()))
@@ -172,12 +184,12 @@ def _build_g(input_shape,
     return g
 
 
-def _fit_g_s(s, g, x, y, epochs):
+def _fit_g_s(s, g, x, y, epochs, optimizer=None):
     if g is not None:
         print("\nTraining g")
     else:
         print("\nTraining s")
-    optimizer = tf.keras.optimizers.Adam(0.001)
+    optimizer = optimizer or tf.keras.optimizers.Adam(2e-4)
     loss_fn = tf.keras.losses.BinaryCrossentropy()
     acc = tf.keras.metrics.BinaryAccuracy()
     x_train, x_val, y_train, y_val = sklearn.model_selection.train_test_split(x, y, test_size=0.1)
@@ -210,8 +222,8 @@ def _fit_g_s(s, g, x, y, epochs):
                 optimizer.apply_gradients(zip(s_grads, s.trainable_weights))
         if (epoch + 1) % 10 == 0:
             print(
-                "Training loss (for one batch) at step %d: %.4f"
-                % (step, float(loss_value)),
+                "Training loss (for one batch): %.4f"
+                % float(loss_value),
                 "\nTraining accuracy", acc.result().numpy()
             )
 
@@ -265,52 +277,55 @@ def _get_decreasing_columns(constraints: List[Any], mapper: DataFrameMapper) -> 
 
 class Fimap(BaseExplainer):
 
-    def __init__(self, tau: float = 0.1, l1: float = 0.01, l2: float = 0.1, constraints: Optional[List[Any]] = None,
-                 s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None):
+    def __init__(self, tau: float = 0.1, l1: float = 0.001, l2: float = 0.01, constraints: Optional[List[Any]] = None,
+                 s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None,
+                 random_state: int = 42, return_class_prediction: bool = False):
         self._constraints = constraints if constraints is not None else []
         self._s = s
-        self._g: tf.keras.Model = None
+        self._g: tf.keras.Model
         self._g_layers = g_layers
-        self._sg: tf.keras.Model = None
         self._input_shape: Tuple[int]
         self._assert_not_nominal_and_one_hot()
         self._one_hot_columns = _get_one_hot_columns(self._constraints)
         self._nominal_columns = _get_nominal_columns(self._constraints)
         self._mapper = DataFrameMapper(nominal_columns=self._nominal_columns, one_hot_columns=self._one_hot_columns)
-        self._nominal_columns_spans = _get_nominal_columns_span(self._constraints, self._mapper)
         self._continuous_columns: List[str]
         self._tau = tau
         self._l1 = l1
         self._l2 = l2
         self._y_label_binarizer = LabelBinarizer()
-        self._increasing_columns = _get_increasing_columns(self._constraints, self._mapper)
-        self._decreasing_columns = _get_decreasing_columns(self._constraints, self._mapper)
+        self._random_state = random_state
+        self._return_class_prediction = return_class_prediction
+        self._s_prediction: NDArray[np.float32]
 
     def fit(self, x: pd.DataFrame, y: pd.Series, epochs: int = 5, **kwargs) -> None:
         x = self._mapper.fit_transform(x)
         y = self._y_label_binarizer.fit_transform(y)
+        increasing_columns = _get_increasing_columns(self._constraints, self._mapper)
+        decreasing_columns = _get_decreasing_columns(self._constraints, self._mapper)
         input_shape = x.shape[1:]
         s = self._s
         if s is None:
-            s = _build_s(input_shape=input_shape)
+            s = _build_s(input_shape=input_shape, random_state=self._random_state)
             _fit_g_s(s, None, x, y, epochs)
         freeze_columns = _get_freeze_columns(self._constraints, self._mapper)
         g = _build_g(input_shape=input_shape,
                      layers=self._g_layers,
                      one_hot_columns=self._mapper.one_hot_spans,
                      freezed_columns=freeze_columns,
-                     increasing_columns=self._increasing_columns,
-                     decreasing_columns=self._decreasing_columns,
+                     increasing_columns=increasing_columns,
+                     decreasing_columns=decreasing_columns,
                      l1=self._l1, l2=self._l2,
-                     tau=self._tau)
+                     tau=self._tau, random_state=self._random_state)
         _fit_g_s(s, g, x, 1 - y, epochs)
         self._s = s
         self._g = g
 
     def generate(self, x: pd.Series) -> pd.DataFrame:
         x = self._mapper.transform(x.to_frame().T)
-        perturbed = self._g.predict(x)
-        print(perturbed)
+        perturbed = self._g(x, training=False)
+        assert self._s is not None
+        self._s_prediction = self._s.predict(perturbed)
         return self._mapper.inverse_transform(perturbed)
 
     def _assert_not_nominal_and_one_hot(self):
