@@ -8,10 +8,9 @@ import joblib
 import psutil
 import warnings
 import pandas as pd
-from counterfactuals.base import BaseExplainer
 from numpy.typing import NDArray
 
-
+from ..base import BaseExplainer
 from ._cadex_parallel import compute_criterion
 
 

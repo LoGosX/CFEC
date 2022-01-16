@@ -1,6 +1,6 @@
 from typing import List, Any
 
-from counterfactuals.constraints import ValueRange, ValueMonotonicity, ValueNominal, ValueMaxDiff
+from ..constraints import ValueRange, ValueMonotonicity, ValueNominal, ValueMaxDiff
 import pandas as pd
 
 
