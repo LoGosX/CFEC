@@ -9,9 +9,12 @@ class GermanData:
     def __init__(self, input_file, labels_file, test_frac=0.2):
         self.input = pd.read_csv(input_file, index_col=0, dtype=np.float64)
         self.labels = pd.read_csv(labels_file, index_col=0, dtype=np.int32)
-        self.constraints = [OneHot(7, 10), OneHot(11, 15), OneHot(16, 25), OneHot(26, 30), OneHot(31, 34),
-                            OneHot(35, 37), OneHot(38, 41), OneHot(42, 44), OneHot(45, 47), OneHot(48, 51),
-                            OneHot(52, 53), OneHot(54, 55), OneHot(56, 60)]
+        self.constraints = [OneHot("account_status", 7, 10), OneHot("credit_history", 11, 15),
+                            OneHot("purpose", 16, 25), OneHot("savings", 26, 30), OneHot("sex_status", 31, 34),
+                            OneHot("debtors", 35, 37), OneHot("property", 38, 41),
+                            OneHot("other_installment_plans", 42, 44), OneHot("housing", 45, 47), OneHot("job", 48, 51),
+                            OneHot("phone", 52, 53), OneHot("foreign", 54, 55), OneHot("employment", 56, 60)]
+
         self.additional_constraints = [Freeze(['credit']), ValueMonotonicity(['age'], "increasing")]
         self.index = 0
 
@@ -39,7 +42,7 @@ class GermanData:
             return pd.Series(self._scaler.inverse_transform(pd.DataFrame([data]))[0].transpose(), index=data.index)
         else:
             scaled = self._scaler.inverse_transform([data])[0]
-            scaled[scaled < 1**-16] = 0
+            scaled[scaled < 1 ** -16] = 0
             return scaled
 
     def scale(self, data):
@@ -49,5 +52,5 @@ class GermanData:
             return pd.Series(self._scaler.transform(pd.DataFrame([data]))[0].transpose(), index=data.index)
         else:
             scaled = self._scaler.transform([data])[0]
-            scaled[scaled < 1**-16] = 0
+            scaled[scaled < 1 ** -16] = 0
             return scaled

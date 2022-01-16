@@ -61,7 +61,7 @@ class Cadex(BaseExplainer):
 
         input_shape = x.shape[1:]
         gradient = self._get_gradient(x, y_expected)
-        self._initialize_mask(input_shape, gradient.numpy()[0]) # TODO standardize
+        self._initialize_mask(input_shape, gradient.numpy()[0])
         self._initialize_c(input_shape)
 
         for _ in range(self._max_epochs):

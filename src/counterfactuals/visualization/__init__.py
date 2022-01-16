@@ -1,5 +1,6 @@
-from ._visualization import compare
+from ._visualization import compare, show
 
 __all__ = [
+    'show',
     'compare'
 ]
