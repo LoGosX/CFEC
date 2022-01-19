@@ -69,7 +69,10 @@ class Cadex(BaseExplainer):
             updated_mask = self._update_mask(gradient)
             gradient = tf.convert_to_tensor(gradient * updated_mask)
             self._opt.apply_gradients(zip([gradient], [x]))
-            corrected_input = self._correct_categoricals(x)
+            if any(isinstance(constraint, OneHot) for constraint in self._constraints):
+                corrected_input = self._correct_categoricals(x)
+            else:
+                corrected_input = x
             if self._get_predicted_class(corrected_input) == np.argmax(y_expected):
                 return corrected_input
 
@@ -160,13 +163,19 @@ class Cadex(BaseExplainer):
         for i in indices:
             if count < self._n_changed:
                 if self._mask[i] == 1:
+                    is_categorical = False
                     for constraint in self._constraints:
                         if isinstance(constraint, OneHot):
-                            if constraint.start_column <= i <= constraint.end_column and constraint not in categoricals:
-                                categoricals.append(constraint)
-                                count += 1
-            else:
-                self._mask[i] = 0
+                            if constraint.start_column <= i <= constraint.end_column:
+                                is_categorical = True
+                                if constraint not in categoricals:
+                                    categoricals.append(constraint)
+                                    count += 1
+                                    break
+                    if not is_categorical:
+                        count += 1
+                    continue
+            self._mask[i] = 0
 
         for constraint in categoricals:
             self._mask[constraint.start_column: constraint.end_column + 1] = 1
@@ -175,9 +184,8 @@ class Cadex(BaseExplainer):
         if self._columns_to_change is not None:
             self._initialize_mask_with_columns(shape)
 
-        else:
-            self._apply_mask_constraints(shape, gradient)
-            self._choose_n_features(gradient)
+        self._apply_mask_constraints(shape, gradient)
+        self._choose_n_features(gradient)
 
     def _initialize_c(self, shape):
         self.C = np.zeros(shape)

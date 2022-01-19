@@ -28,29 +28,26 @@ class GermanData:
 
         self._scaler = StandardScaler()
         self._scaler.fit(self.X_train.to_numpy(dtype=np.float64))
-        self.X_train = pd.DataFrame(self._scaler.transform(self.X_train), index=self.X_train.index,
+        self.X_train = pd.DataFrame(self._scaler.transform(self.X_train.to_numpy(dtype=np.float64)), index=self.X_train.index,
                                     columns=self.X_train.columns)
 
         if self.X_test.shape[0] > 0:
-            self.X_test = pd.DataFrame(self._scaler.transform(self.X_test), index=self.X_test.index,
+            self.X_test = pd.DataFrame(self._scaler.transform(self.X_test.to_numpy(dtype=np.float64)), index=self.X_test.index,
                                        columns=self.X_test.columns)
 
     def unscale(self, data):
         if type(data) is pd.DataFrame:
-            return pd.DataFrame(self._scaler.inverse_transform(data), index=data.index, columns=data.columns)
+            return pd.DataFrame(self._scaler.inverse_transform(data.to_numpy()), index=data.index, columns=data.columns)
+
         elif type(data) is pd.Series:
-            return pd.Series(self._scaler.inverse_transform(pd.DataFrame([data]))[0].transpose(), index=data.index)
+            return pd.Series(self._scaler.inverse_transform([data.to_numpy()])[0].transpose(), index=data.index)
         else:
-            scaled = self._scaler.inverse_transform([data])[0]
-            scaled[scaled < 1 ** -16] = 0
-            return scaled
+            return self._scaler.inverse_transform([data])[0]
 
     def scale(self, data):
         if type(data) is pd.DataFrame:
-            return pd.DataFrame(self._scaler.transform(data), index=data.index, columns=data.columns)
+            return pd.DataFrame(self._scaler.transform(data.to_numpy()), index=data.index, columns=data.columns)
         elif type(data) is pd.Series:
-            return pd.Series(self._scaler.transform(pd.DataFrame([data]))[0].transpose(), index=data.index)
+            return pd.Series(self._scaler.transform([data.to_numpy()])[0].transpose(), index=data.index)
         else:
-            scaled = self._scaler.transform([data])[0]
-            scaled[scaled < 1 ** -16] = 0
-            return scaled
+            return self._scaler.transform([data])[0]
