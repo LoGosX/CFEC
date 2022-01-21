@@ -23,7 +23,7 @@ def compare(x: pd.Series, cf: pd.DataFrame, constraints: Optional[List[Any]] = N
             method_names: Optional[List[str]] = None) -> pd.DataFrame:
     constraints = [] if constraints is None else constraints
     df = pd.concat([x, cf.T], axis=1)
-    df.columns = ["X"] + ["CF" + str(i) for i in range(1, df.shape[1])]
+    df.columns = ["X"] + ["CF" + str(i) + " change" for i in range(1, df.shape[1])]
     for col in df.iloc[:, 1:]:
         df[col] = df[col] - df["X"]
 
@@ -38,7 +38,6 @@ def compare(x: pd.Series, cf: pd.DataFrame, constraints: Optional[List[Any]] = N
 
     df_final = pd.concat([df_info, df], axis=0)
 
-    #df_final.replace(0, "-", inplace=True)
     return df_final
 
 

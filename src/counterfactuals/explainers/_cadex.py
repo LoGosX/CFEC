@@ -193,4 +193,5 @@ class Cadex(BaseExplainer):
             if isinstance(constraint, ValueMonotonicity):
                 val = 1 if constraint.direction == "increasing" else -1
                 for column in constraint.columns:
-                    self.C[column] = val
+                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    self.C[column_index] = val

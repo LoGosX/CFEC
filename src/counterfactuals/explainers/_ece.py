@@ -37,6 +37,7 @@ class ECE(BaseExplainer):
             for bce_r in bce_result:
                 list_cfs.append(bce_r)
         cfs = np.unique(np.asarray(list_cfs), axis=0)
+        print(f"CFS: {cfs}")
         self._cfs_len = cfs.shape[0]
         assert isinstance(cfs, np.ndarray)
         return cfs
