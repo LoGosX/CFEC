@@ -315,16 +315,17 @@ class Fimap(BaseExplainer):
                      decreasing_columns=decreasing_columns,
                      l1=self._l1, l2=self._l2,
                      tau=self._tau, random_state=self._random_state)
-        _fit_g_s(s, g, x, 1 - y, epochs)
         self._s = s
         self._g = g
+        _fit_g_s(s, g, x, 1 - y, epochs)
 
     def generate(self, x: pd.Series) -> pd.DataFrame:
         x = self._mapper.transform(x.to_frame().T)
         perturbed = self._g(x, training=False)
         assert self._s is not None
         self._s_prediction = self._s.predict(perturbed)
-        return self._mapper.inverse_transform(perturbed)
+        transformed = self._mapper.inverse_transform(perturbed)
+        return transformed
 
     def _assert_not_nominal_and_one_hot(self):
         if any(isinstance(c, ValueNominal) for c in self._constraints) and any(

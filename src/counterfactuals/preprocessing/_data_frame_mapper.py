@@ -50,11 +50,11 @@ class DataFrameMapper:
 
     @property
     def one_hot_spans(self) -> List[Tuple[int, int]]:
-        if self._one_hot_encoder is None:
-            return []
-
         if self._one_hot_columns:
             return self._one_hot_columns
+
+        if self._one_hot_encoder is None:
+            return []
 
         spans = []
         one_hot_start = self._n_continuous_columns
@@ -164,7 +164,7 @@ class DataFrameMapper:
 
     def _transform_nominal(self, x: pd.DataFrame) -> NDArray[np.float32]:
         if self._one_hot_columns:
-            return np.array(x.iloc[:, start:end + 1] for (start, end) in self._one_hot_columns)
+            return np.hstack([x.iloc[:, start:end + 1] for (start, end) in self._one_hot_columns])
 
         nominal_columns = x[self._nominal_columns]
         assert self._one_hot_encoder is not None
