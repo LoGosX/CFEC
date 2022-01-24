@@ -7,6 +7,8 @@ from counterfactuals.constraints import ValueMonotonicity, Freeze, OneHot, Value
 
 
 def show(x: pd.Series, cf: pd.Series, constraints: Optional[List[Any]] = None) -> pd.DataFrame:
+    cf = cf.round(3)
+    x = x.round(3)
     df = pd.concat([x, cf.transpose()], axis=1)
     df.columns = ["X", "X'"]
     df["index"] = list(range(len(x)))
@@ -19,10 +21,12 @@ def show(x: pd.Series, cf: pd.Series, constraints: Optional[List[Any]] = None) -
     return df.drop(["index"], axis=1)
 
 
-def compare(x: pd.Series, cf: pd.DataFrame, constraints: Optional[List[Any]] = None,
+def compare(x: pd.Series, cfs: pd.DataFrame, constraints: Optional[List[Any]] = None,
             method_names: Optional[List[str]] = None) -> pd.DataFrame:
+    cfs = cfs.round(3)
+    x = x.round(3)
     constraints = [] if constraints is None else constraints
-    df = pd.concat([x, cf.T], axis=1)
+    df = pd.concat([x, cfs.T], axis=1)
     df.columns = ["X"] + ["CF" + str(i) + " change" for i in range(1, df.shape[1])]
     for col in df.iloc[:, 1:]:
         df[col] = df[col] - df["X"]

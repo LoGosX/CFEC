@@ -247,7 +247,7 @@ def _get_one_hot_columns(constraints: List[Any]) -> List[Tuple[int, int]]:
     columns = []
     for constraint in constraints:
         if isinstance(constraint, OneHot):
-            columns.append((constraint.start_column, constraint.end_column))
+            columns.append((constraint.start_column, constraint.end_column + 1))
     return columns
 
 

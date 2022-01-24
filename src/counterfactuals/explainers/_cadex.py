@@ -152,8 +152,8 @@ class Cadex(BaseExplainer):
             if isinstance(constraint, ValueMonotonicity):
                 for column in constraint.columns:
                     column_index = column if isinstance(column, int) else self._columns.index(column)
-                    if (constraint.direction == "increasing" and gradient[column_index] < 0) or \
-                            (constraint.direction == "decreasing" and gradient[column_index] > 0):
+                    if (constraint.direction == "increasing" and gradient[column_index] > 0) or \
+                            (constraint.direction == "decreasing" and gradient[column_index] < 0):
                         self._mask[column_index] = 0
 
     def _choose_n_features(self, gradient):
