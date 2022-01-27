@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from cfec.constraints import Freeze, OneHot, ValueMonotonicity
 
 
@@ -26,7 +26,7 @@ class GermanData:
         self.num_label_columns = len(self.labels.columns)
         self.label_columns = self.labels.columns
 
-        self._scaler = StandardScaler()
+        self._scaler = MinMaxScaler()
         self._scaler.fit(self.X_train.to_numpy(dtype=np.float64))
         self.X_train = pd.DataFrame(self._scaler.transform(self.X_train.to_numpy(dtype=np.float64)), index=self.X_train.index,
                                     columns=self.X_train.columns)

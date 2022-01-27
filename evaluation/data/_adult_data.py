@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelBinarizer, StandardScaler, LabelEncoder, OneHotEncoder
+from sklearn.preprocessing import LabelBinarizer, StandardScaler, LabelEncoder, OneHotEncoder, MinMaxScaler
 from cfec.constraints import Freeze, OneHot, ValueMonotonicity, ValueNominal
 
 
@@ -12,7 +12,7 @@ class AdultData:
     def __init__(self, dataset_file: str, columns_to_drop: Optional[List[str]] = None, test_frac=0.2, random_state=42):
 
         df = pd.read_csv(dataset_file)
-
+        df = df.sample(frac=1)
         df.replace('?', np.NaN, inplace=True)
         df.dropna(inplace=True)
 
@@ -48,7 +48,7 @@ class AdultData:
         self.standard_scalers = []
         for feature in df.columns:
             if feature not in self.categorical_columns and feature != self.target_column:
-                sc = StandardScaler()
+                sc = MinMaxScaler()
                 df[feature] = sc.fit_transform(df[feature].values.reshape(-1, 1))
                 self.standard_scalers.append(sc)
 
@@ -62,11 +62,11 @@ class AdultData:
         df_labels = df[self.target_column]
         
         one_hot_constraints = [
-            OneHot('workclass', 2, 9),
-            OneHot('martial.status', 9, 16),
-            OneHot('occupation', 16, 30),
-            OneHot('race', 30, 35),
-            OneHot('sex', 35, 37),
+            OneHot('workclass', 2, 8),
+            OneHot('martial.status', 9, 15),
+            OneHot('occupation', 16, 29),
+            OneHot('race', 30, 34),
+            OneHot('sex', 35, 36),
         ]
 
         self.constraints = [

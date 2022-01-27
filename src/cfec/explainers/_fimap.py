@@ -194,14 +194,11 @@ def _fit_g_s(s, g, x, y, s_epochs, g_epochs, g_optimizer=None, s_optimizer=None)
         optimizer = s_optimizer or optimizer
     loss_fn = tf.keras.losses.BinaryCrossentropy()
     acc = tf.keras.metrics.BinaryAccuracy()
-    x_train, x_val, y_train, y_val = sklearn.model_selection.train_test_split(x, y, test_size=0.1)
+    x_train, y_train = x, y
 
     batch_size = x_train.shape[0]
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size)
-
-    val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
-    val_dataset = val_dataset.batch(batch_size)
 
     for epoch in range(epochs):
         for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
@@ -281,7 +278,7 @@ class Fimap(BaseExplainer):
 
     def __init__(self, tau: float = 0.1, l1: float = 0.001, l2: float = 0.01, constraints: Optional[List[Any]] = None,
                  s: Optional[tf.keras.Model] = None, g_layers: Optional[List[tf.keras.layers.Layer]] = None,
-                 random_state: int = 42, return_class_prediction: bool = False):
+                 random_state: int = 42, return_class_prediction: bool = False, use_mapper: bool = False):
         self._constraints = constraints if constraints is not None else []
         self._s = s
         self._g: tf.keras.Model
@@ -299,9 +296,14 @@ class Fimap(BaseExplainer):
         self._random_state = random_state
         self._return_class_prediction = return_class_prediction
         self._s_prediction: NDArray[np.float32]
+        self._use_mapper = use_mapper
+        self._original_columns: Optional[List[str]] = None
 
-    def fit(self, x: pd.DataFrame, y: pd.Series, epochs: int = 5, **kwargs) -> None:
-        x = self._mapper.fit_transform(x)
+    def fit(self, x: pd.DataFrame, y: pd.Series, **kwargs) -> None:
+        if self._use_mapper:
+            x = self._mapper.fit_transform(x)
+        else:
+            self._original_columns = list(x.columns)
         y = self._y_label_binarizer.fit_transform(y)
         increasing_columns = _get_increasing_columns(self._constraints, self._mapper)
         decreasing_columns = _get_decreasing_columns(self._constraints, self._mapper)
@@ -325,13 +327,19 @@ class Fimap(BaseExplainer):
         self._g = g
         _fit_g_s(s, g, x, 1 - y, **kwargs)
 
-    def generate(self, x: pd.Series) -> pd.DataFrame:
-        x = self._mapper.transform(x.to_frame().T)
+    def generate(self, _x: pd.Series) -> pd.DataFrame:
+        df = _x.to_frame().T
+        if self._use_mapper:
+            x = self._mapper.transform(df)
+        else:
+            x = df.values
         perturbed = self._g(x, training=False)
         assert self._s is not None
-        self._s_prediction = self._s.predict(perturbed)
-        transformed = self._mapper.inverse_transform(perturbed)
-        return transformed
+        if self._use_mapper:
+            return self._mapper.inverse_transform(perturbed)
+        else:
+            assert self._original_columns is not None
+            return pd.DataFrame(data=perturbed.numpy(), columns=self._original_columns)
 
     def _assert_not_nominal_and_one_hot(self):
         if any(isinstance(c, ValueNominal) for c in self._constraints) and any(
