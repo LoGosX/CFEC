@@ -40,7 +40,7 @@ def _freeze_constraints_to_mask(layer_size: int, freeze_constraints: List[Freeze
         -> NDArray[np.float32]:
     mask = np.zeros(shape=(layer_size,), dtype=dtype)
     for constraint in freeze_constraints:
-        columns = np.asarray(constraint.columns)
+        columns: NDArray[np.int32] = np.asarray(constraint.columns)
         mask[columns] = 1
     return mask
 
@@ -308,7 +308,7 @@ class Fimap(BaseExplainer):
         input_shape = x.shape[1:]
         s = self._s
 
-        kwargs = {'s_epochs':100, 'g_epochs':250, **kwargs}
+        kwargs = {'s_epochs': 100, 'g_epochs': 250, **kwargs}
         if s is None:
             s = _build_s(input_shape=input_shape, random_state=self._random_state)
             _fit_g_s(s, None, x, y, **kwargs)

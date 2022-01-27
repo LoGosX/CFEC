@@ -45,8 +45,10 @@ def compare(x: pd.Series, cfs: pd.DataFrame, constraints: Optional[List[Any]] = 
     return df_final
 
 
-def _count_difference_number(df: pd.DataFrame, constraints: List[Any] = None) -> NDArray:
+def _count_difference_number(df: pd.DataFrame, constraints: Optional[List[Any]] = None) -> NDArray[np.float64]:
     differences = np.zeros(df.shape[1])
+    if constraints is None:
+        constraints = []
     for i, col in enumerate(df.iloc[:, 1:]):
         diff = df[col].copy()
         for constraint in constraints:
@@ -59,7 +61,9 @@ def _count_difference_number(df: pd.DataFrame, constraints: List[Any] = None) ->
     return differences
 
 
-def _add_constraints_column(df: pd.DataFrame, constraints: List[Any] = None):
+def _add_constraints_column(df: pd.DataFrame, constraints: Optional[List[Any]] = None):
+    if constraints is None:
+        constraints = []
     df["constraint"] = ""
     for constraint in constraints:
         if isinstance(constraint, OneHot):
@@ -73,6 +77,8 @@ def _add_constraints_column(df: pd.DataFrame, constraints: List[Any] = None):
 
 
 def _check_constraints(df: pd.DataFrame, constraints: Optional[List[Any]] = None) -> pd.DataFrame:
+    if constraints is None:
+        constraints = []
     df["constraint"] = ""
     for constraint in constraints:
         if isinstance(constraint, OneHot):

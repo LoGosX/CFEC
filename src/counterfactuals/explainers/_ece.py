@@ -11,7 +11,7 @@ import pandas as pd
 from numpy.typing import NDArray
 
 from ..base import BaseExplainer
-from ._cadex_parallel import compute_criterion
+from ._cadex_parallel import compute_criterion  # type: ignore
 
 
 class ECE(BaseExplainer):
@@ -33,18 +33,18 @@ class ECE(BaseExplainer):
     def _aggregate_cfs(self, x) -> NDArray[np.float32]:
         list_cfs: List[NDArray[np.float32]] = []
         for bce in self.bces:
-            bce_result = np.asarray(bce.generate(x).values)
+            bce_result: NDArray[np.float32] = np.asarray(bce.generate(x).values)
             for bce_r in bce_result:
                 list_cfs.append(bce_r)
-        cfs = np.unique(np.asarray(list_cfs), axis=0)
+        cfs: NDArray[np.float32] = np.unique(np.asarray(list_cfs), axis=0)
         self._cfs_len = cfs.shape[0]
         assert isinstance(cfs, np.ndarray)
         return cfs
 
     def _choose_best_k(self, valid_cfs: NDArray[np.float32], x_series):
         x = x_series.values
-        norms = np.apply_along_axis(functools.partial(np.linalg.norm, ord=self.norm),
-                                    0, valid_cfs)
+        norms: NDArray[np.float32] = np.apply_along_axis(functools.partial(np.linalg.norm, ord=self.norm),
+                                                         0, valid_cfs)
         C = list(valid_cfs / norms)
         k = min(self.k, self._cfs_len)
         if k != self.k:
@@ -59,10 +59,11 @@ class ECE(BaseExplainer):
         for i in range(k):
             k_subsets += list(itertools.combinations(C, r=i + 1))
         knn_c = sklearn.neighbors.KNeighborsClassifier(n_neighbors=k)
-        c_np = np.asarray(C)
+        c_np: NDArray[np.float32] = np.asarray(C)
         knn_c.fit(c_np, np.ones(shape=c_np.shape[0]))
 
-        S_ids = joblib.Parallel(n_jobs=self.n_jobs)(joblib.delayed(compute_criterion)(knn_c, self.norm, self.lambda_, c_np, x, S) for S in k_subsets)
+        S_ids = joblib.Parallel(n_jobs=self.n_jobs)(
+            joblib.delayed(compute_criterion)(knn_c, self.norm, self.lambda_, c_np, x, S) for S in k_subsets)
         selected = norms * k_subsets[np.argmax(np.asarray(S_ids))]
         return selected
 

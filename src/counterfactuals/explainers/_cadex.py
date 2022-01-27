@@ -12,6 +12,8 @@ from tensorflow.keras.losses import CategoricalCrossentropy
 
 from typing import Union, List, Any, Callable, Optional
 
+_CallableTransform = Callable[[NDArray[np.float32]], NDArray[np.float32]]
+
 
 class Cadex(BaseExplainer):
     """
@@ -26,8 +28,8 @@ class Cadex(BaseExplainer):
                  max_epochs: int = 1000,
                  optimizer: tf.keras.optimizers.Optimizer = Adam(0.01),
                  loss: tf.keras.losses.Loss = CategoricalCrossentropy(),
-                 transform: Optional[Callable[[NDArray], NDArray]] = None,
-                 inverse_transform: Optional[Callable[[NDArray], NDArray]] = None,
+                 transform: Optional[_CallableTransform] = None,
+                 inverse_transform: Optional[_CallableTransform] = None,
                  constraints: Optional[List[Any]] = None) -> None:
 
         self._constraints = constraints if constraints is not None else []
@@ -36,7 +38,7 @@ class Cadex(BaseExplainer):
         self._model = pretrained_model
         self._max_epochs = max_epochs
         self._n_changed = n_changed
-        self._columns_to_change = columns_to_change
+        self._columns_to_change = columns_to_change  # type: ignore
 
         self._transform = transform
         self._inverse_transform = inverse_transform
@@ -108,6 +110,7 @@ class Cadex(BaseExplainer):
 
         if self._transform is not None:
             corrected_x = self._transform(corrected_x)
+            assert self._inverse_transform is not None
             self._inverse_transform(corrected_x)
 
         return tf.convert_to_tensor([corrected_x], dtype=self._dtype)
@@ -120,10 +123,10 @@ class Cadex(BaseExplainer):
             x = self._transform(x)
         return tf.Variable(x[np.newaxis, :], dtype=self._dtype)
 
-    def _inverse_transform_input(self, x: tf.Variable) -> NDArray:
-        x = x.numpy()[0]
+    def _inverse_transform_input(self, _x: tf.Variable) -> NDArray[np.float32]:
+        x: NDArray[np.float32] = _x.numpy()[0]
         if self._inverse_transform is not None:
-            x = self._inverse_transform(x)
+            return self._inverse_transform(x)
         return x
 
     def _initialize_mask_with_columns(self, shape):
@@ -131,7 +134,10 @@ class Cadex(BaseExplainer):
         if all(isinstance(column, int) for column in self._columns_to_change):
             column_indices = self._columns_to_change
         else:
-            column_indices = [self._columns.index(column) for column in self._columns_to_change]
+            column_indices = []
+            for column in self._columns_to_change:
+                assert isinstance(column, str)
+                column_indices.append(self._columns.index(column))
 
         self._mask = np.zeros(shape, dtype=self._dtype)
         self._mask[column_indices] = 1
@@ -141,7 +147,7 @@ class Cadex(BaseExplainer):
         for constraint in self._constraints:
             if isinstance(constraint, Freeze):
                 for column in constraint.columns:
-                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    column_index = column if isinstance(column, int) else self._columns.index(column)  # type: ignore
                     # if constraint freezes a column which is one-hot encoded, freeze all one-hot columns
                     for constraint_one_hot in self._constraints:
                         if isinstance(constraint, OneHot):
@@ -151,7 +157,7 @@ class Cadex(BaseExplainer):
 
             if isinstance(constraint, ValueMonotonicity):
                 for column in constraint.columns:
-                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    column_index = column if isinstance(column, int) else self._columns.index(column)  # type: ignore
                     if (constraint.direction == "increasing" and gradient[column_index] > 0) or \
                             (constraint.direction == "decreasing" and gradient[column_index] < 0):
                         self._mask[column_index] = 0
@@ -193,5 +199,5 @@ class Cadex(BaseExplainer):
             if isinstance(constraint, ValueMonotonicity):
                 val = 1 if constraint.direction == "increasing" else -1
                 for column in constraint.columns:
-                    column_index = column if isinstance(column, int) else self._columns.index(column)
+                    column_index = column if isinstance(column, int) else self._columns.index(column)  # type: ignore
                     self.C[column_index] = val
