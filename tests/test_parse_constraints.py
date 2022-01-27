@@ -1,4 +1,4 @@
-from counterfactuals.constraints import json_to_class_parse, ValueRange, ValueMonotonicity, ValueNominal, ValueMaxDiff
+from cfec.constraints import json_to_class_parse, ValueRange, ValueMonotonicity, ValueNominal, ValueMaxDiff
 
 
 def test_parse():

@@ -3,7 +3,7 @@ import pandas as pd
 
 from typing import Optional, List, Any
 from numpy.typing import NDArray
-from counterfactuals.constraints import ValueMonotonicity, Freeze, OneHot, ValueNominal
+from cfec.constraints import ValueMonotonicity, Freeze, OneHot, ValueNominal
 
 
 def show(x: pd.Series, cf: pd.Series, constraints: Optional[List[Any]] = None) -> pd.DataFrame:

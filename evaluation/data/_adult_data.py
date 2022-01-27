@@ -5,7 +5,7 @@ import numpy as np
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer, StandardScaler, LabelEncoder, OneHotEncoder
-from counterfactuals.constraints import Freeze, OneHot, ValueMonotonicity, ValueNominal
+from cfec.constraints import Freeze, OneHot, ValueMonotonicity, ValueNominal
 
 
 class AdultData:

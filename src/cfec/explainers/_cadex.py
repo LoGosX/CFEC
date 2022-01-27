@@ -1,7 +1,7 @@
 from numpy.typing import NDArray
 
-from counterfactuals.constraints import ValueMonotonicity, Freeze, OneHot
-from counterfactuals.base import BaseExplainer
+from cfec.constraints import ValueMonotonicity, Freeze, OneHot
+from cfec.base import BaseExplainer
 
 import pandas as pd
 import numpy as np

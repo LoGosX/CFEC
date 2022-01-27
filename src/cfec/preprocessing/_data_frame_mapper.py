@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
 
-from counterfactuals.constraints import ValueNominal, OneHot
+from cfec.constraints import ValueNominal, OneHot
 
 
 def _stack_continuous_nominal(c: NDArray[np.float32], n: NDArray[np.float32]) -> NDArray[np.float32]:

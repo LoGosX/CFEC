@@ -11,9 +11,9 @@ class BaseExplainer(ABC):
 
     @abstractmethod
     def generate(self, x: pd.Series) -> pd.DataFrame:
-        """Generate counterfactuals for a single example x
+        """Generate cfec for a single example x
 
-        :param x: single example to generate counterfactuals for
+        :param x: single example to generate cfec for
         :type x: pd.Series of shape (n_features,)
 
         :rtype: pd.DataFrame of shape (n_counterfactuals, n_features)

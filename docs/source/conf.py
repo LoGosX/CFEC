@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath('../../src/'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'counterfactuals'
+project = 'cfec'
 copyright = '2022, Maciej Falbogowski, Zuzanna Trafas, Adam Wojciechowski'
 author = 'Maciej Falbogowski, Zuzanna Trafas, Adam Wojciechowski'
 

@@ -1,4 +1,4 @@
-from counterfactuals.preprocessing import DataFrameMapper
+from cfec.preprocessing import DataFrameMapper
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
