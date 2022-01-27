@@ -182,12 +182,16 @@ def _build_g(input_shape,
     return g
 
 
-def _fit_g_s(s, g, x, y, epochs, optimizer=None):
+def _fit_g_s(s, g, x, y, s_epochs, g_epochs, g_optimizer=None, s_optimizer=None):
+    optimizer = tf.keras.optimizers.Adam(2e-4)
     if g is not None:
         print("\nTraining g")
+        optimizer = g_optimizer or optimizer
+        epochs = g_epochs
     else:
         print("\nTraining s")
-    optimizer = optimizer or tf.keras.optimizers.Adam(2e-4)
+        epochs = s_epochs
+        optimizer = s_optimizer or optimizer
     loss_fn = tf.keras.losses.BinaryCrossentropy()
     acc = tf.keras.metrics.BinaryAccuracy()
     x_train, x_val, y_train, y_val = sklearn.model_selection.train_test_split(x, y, test_size=0.1)
@@ -218,7 +222,7 @@ def _fit_g_s(s, g, x, y, epochs, optimizer=None):
             else:
                 s_grads = tape.gradient(loss_value, s.trainable_weights)
                 optimizer.apply_gradients(zip(s_grads, s.trainable_weights))
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % 100 == 0:
             print(
                 "Training loss (for one batch): %.4f"
                 % float(loss_value),
@@ -303,9 +307,11 @@ class Fimap(BaseExplainer):
         decreasing_columns = _get_decreasing_columns(self._constraints, self._mapper)
         input_shape = x.shape[1:]
         s = self._s
+
+        kwargs = {'s_epochs':100, 'g_epochs':250, **kwargs}
         if s is None:
             s = _build_s(input_shape=input_shape, random_state=self._random_state)
-            _fit_g_s(s, None, x, y, epochs)
+            _fit_g_s(s, None, x, y, **kwargs)
         freeze_columns = _get_freeze_columns(self._constraints, self._mapper)
         g = _build_g(input_shape=input_shape,
                      layers=self._g_layers,
@@ -317,7 +323,7 @@ class Fimap(BaseExplainer):
                      tau=self._tau, random_state=self._random_state)
         self._s = s
         self._g = g
-        _fit_g_s(s, g, x, 1 - y, epochs)
+        _fit_g_s(s, g, x, 1 - y, **kwargs)
 
     def generate(self, x: pd.Series) -> pd.DataFrame:
         x = self._mapper.transform(x.to_frame().T)

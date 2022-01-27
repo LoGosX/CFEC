@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import LabelBinarizer, StandardScaler, LabelEncoder, OneHotEncoder
 from counterfactuals.constraints import Freeze, OneHot, ValueMonotonicity, ValueNominal
 
 
@@ -21,6 +21,8 @@ class AdultData:
         categorical_columns = ['workclass', 'education', 'marital.status', 'occupation',
                                'relationship', 'race', 'sex', 'native.country']
         freeze_columns = ['race', 'sex', 'native.country']
+
+        
 
         if columns_to_drop is None:
             columns_to_drop = ['fnlwgt', 'education.num', 'education', 'relationship', 'native.country', 'capital.gain',
@@ -50,14 +52,31 @@ class AdultData:
                 df[feature] = sc.fit_transform(df[feature].values.reshape(-1, 1))
                 self.standard_scalers.append(sc)
 
+        for feature in self.categorical_columns:
+            one_hot = pd.get_dummies(df[feature])
+            one_hot = one_hot.add_prefix(f"{feature}-")
+            df.drop(feature, axis = 1, inplace=True)
+            df = df.join(one_hot)
+
         df_inputs = df.drop(columns=[self.target_column])
         df_labels = df[self.target_column]
-
-        self.constraints = [
-            ValueNominal(columns=self.categorical_columns), Freeze(columns=self.freeze_columns)
+        
+        one_hot_constraints = [
+            OneHot('workclass', 2, 9),
+            OneHot('martial.status', 9, 16),
+            OneHot('occupation', 16, 30),
+            OneHot('race', 30, 35),
+            OneHot('sex', 35, 37),
         ]
 
-        self.additional_constraints = []
+        self.constraints = [
+            #ValueNominal(columns=self.categorical_columns), 
+            *one_hot_constraints,
+        ]
+
+        self.additional_constraints = [
+            Freeze(columns=self.freeze_columns)
+            ]
         if 'age' not in columns_to_drop:
             self.additional_constraints.append(ValueMonotonicity(['age'], 'increasing'))
 
@@ -68,6 +87,9 @@ class AdultData:
         self.raw_X_train, self.raw_y_train = RandomUnderSampler().fit_resample(self.raw_X_train, self.raw_y_train)
         self.encoded_raw_X_train, self.encoded_raw_y_train = RandomUnderSampler().fit_resample(self.encoded_raw_X_train,
                                                                                                self.encoded_raw_y_train)
+
+        self.y_train_binarized = pd.get_dummies(self.y_train)
+        self.y_test_binarized = pd.get_dummies(self.y_test)
 
     def inverse_transform(self, X: pd.DataFrame, y=None):
         for label_encoder, column in self.categorical_columns:
