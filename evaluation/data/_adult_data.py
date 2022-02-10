@@ -22,8 +22,6 @@ class AdultData:
                                'relationship', 'race', 'sex', 'native.country']
         freeze_columns = ['race', 'sex', 'native.country']
 
-        
-
         if columns_to_drop is None:
             columns_to_drop = ['fnlwgt', 'education.num', 'education', 'relationship', 'native.country', 'capital.gain',
                                'capital.loss']
@@ -55,12 +53,12 @@ class AdultData:
         for feature in self.categorical_columns:
             one_hot = pd.get_dummies(df[feature])
             one_hot = one_hot.add_prefix(f"{feature}-")
-            df.drop(feature, axis = 1, inplace=True)
+            df.drop(feature, axis=1, inplace=True)
             df = df.join(one_hot)
 
         df_inputs = df.drop(columns=[self.target_column])
         df_labels = df[self.target_column]
-        
+
         one_hot_constraints = [
             OneHot('workclass', 2, 8),
             OneHot('martial.status', 9, 15),
@@ -70,13 +68,13 @@ class AdultData:
         ]
 
         self.constraints = [
-            #ValueNominal(columns=self.categorical_columns), 
+            # ValueNominal(columns=self.categorical_columns),
             *one_hot_constraints,
         ]
 
         self.additional_constraints = [
             Freeze(columns=self.freeze_columns)
-            ]
+        ]
         if 'age' not in columns_to_drop:
             self.additional_constraints.append(ValueMonotonicity(['age'], 'increasing'))
 
@@ -90,6 +88,12 @@ class AdultData:
 
         self.y_train_binarized = pd.get_dummies(self.y_train)
         self.y_test_binarized = pd.get_dummies(self.y_test)
+        self.y_train = self.y_train_binarized
+        self.y_test = self.y_test_binarized
+
+    @property
+    def whole_data(self):
+        return pd.concat([self.X_train, self.X_test]), pd.concat([self.y_train, self.y_test])
 
     def inverse_transform(self, X: pd.DataFrame, y=None):
         for label_encoder, column in self.categorical_columns:

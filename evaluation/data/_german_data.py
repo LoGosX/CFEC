@@ -35,6 +35,10 @@ class GermanData:
             self.X_test = pd.DataFrame(self._scaler.transform(self.X_test.to_numpy(dtype=np.float64)), index=self.X_test.index,
                                        columns=self.X_test.columns)
 
+    @property
+    def whole_data(self):
+        return pd.concat([self.X_train, self.X_test]), pd.concat([self.y_train, self.y_test])
+
     def unscale(self, data):
         if type(data) is pd.DataFrame:
             return pd.DataFrame(self._scaler.inverse_transform(data.to_numpy()), index=data.index, columns=data.columns)

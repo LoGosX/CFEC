@@ -1,7 +1,9 @@
 from typing import Sequence
 from evaluation.data import GermanData
-from keras.models import Sequential
-from keras.layers import Dense, Input, Concatenate
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Input, Concatenate
+
+from evaluation.models._kfold import kfold_accuracy
 
 
 def create_model():
@@ -17,7 +19,9 @@ if __name__ == "__main__":
     german_data = GermanData('evaluation/data/datasets/input_german.csv', 'evaluation/data/datasets/labels_german.csv')
     model = create_model()
     model.summary()
+
+    acc = kfold_accuracy(create_model, *german_data.whole_data, epochs=30)
+    print("KFold accuracy", acc)
+
     model.fit(german_data.X_train, german_data.y_train, epochs=30)
-    scores = model.evaluate(german_data.X_test, german_data.y_test, verbose=0)
-    print(scores)
     model.save('evaluation/models/model_german')
